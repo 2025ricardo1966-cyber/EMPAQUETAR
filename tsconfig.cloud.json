@@ -1,0 +1,42 @@
+{
+  "extends": "./tsconfig.main.json",
+  "compilerOptions": {
+    "noEmitOnError": false
+  },
+  "include": [
+    "src/cloud/**/*",
+    "src/contracts/**/*",
+    "src/main/**/*",
+    "src/i18n/**/*",
+    "src/modules/apparel-studio/mpt/index.ts",
+    "src/modules/apparel-studio/export/**/*",
+    "src/modules/apparel-studio/moldes/types.ts",
+    "src/modules/apparel-studio/moldes/engine/**/*",
+    "src/modules/apparel-studio/moldes/catalog/**/*",
+    "src/modules/apparel-studio/mpt/types.ts",
+    "src/modules/apparel-studio/mpt/engine/**/*",
+    "src/modules/apparel-studio/mpt/catalog/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/modules/apparel-studio/visualization-3d/**",
+    "src/modules/apparel-studio/**/*-store.ts",
+    "src/modules/apparel-studio/moldes/engine/vector-graphic/**",
+    "src/modules/apparel-studio/moldes/engine/apparel-ai-engine.ts",
+    "src/modules/apparel-studio/moldes/engine/apparel-ai-executor.ts",
+    "src/modules/apparel-studio/moldes/engine/sublimation-engine.ts",
+    "src/modules/apparel-studio/moldes/engine/index.ts",
+    "src/main/main.ts",
+    "src/main/services/SystemInfoService.ts",
+    "src/main/services/PythonService.ts",
+    "src/main/services/JobManager.ts",
+    "src/main/services/LocalRealesrganExecutor.ts",
+    "src/main/services/ModelDownloadService.ts",
+    "src/main/services/SettingsManager.ts",
+    "src/main/services/MascaylJobService.ts",
+    "src/main/services/PipelineAuditLogger.ts",
+    "src/main/services/JsonFileJobRepository.ts",
+    "src/main/services/jobRecordMap.ts"
+  ]
+}

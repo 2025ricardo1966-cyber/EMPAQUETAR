@@ -1,0 +1,286 @@
+/*
+ * AI Image Studio — AAA theme system
+ * Apply via data-app-theme + .theme-* on <html> (see useThemeDocument)
+ */
+
+:root {
+  color-scheme: dark;
+  --font-ui: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-metric: 'JetBrains Mono', ui-monospace, monospace;
+  --blur-strength: 12px;
+  --canvas-depth: linear-gradient(180deg, #0a0a0f 0%, #050508 100%);
+  --chassis-ambient: 0 0 60px -24px rgba(255, 0, 128, 0.15);
+}
+
+/* ─── 1. CYBERPUNK HUD ─────────────────────────────────────────────────── */
+[data-app-theme='cyberpunk-hud'],
+.theme-cyberpunk-hud {
+  color-scheme: dark;
+
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #14141f;
+  --bg-tertiary: #1e1e2e;
+
+  --accent-primary: #ff0080;
+  --accent-secondary: #00ffff;
+  --accent-tertiary: #7b2cbf;
+  --accent-mint: #06ffa5;
+
+  --text-primary: #ffffff;
+  --text-secondary: #b0b0b0;
+  --text-muted: #606060;
+
+  --border-color: rgba(255, 0, 128, 0.3);
+  --glow-color: rgba(255, 0, 128, 0.6);
+  --glass-bg: rgba(20, 20, 31, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --shadow-glow: 0 0 20px var(--glow-color);
+  --shadow-depth: 0 0 20px var(--glow-color), 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.35);
+
+  --hud-void: var(--bg-primary);
+  --hud-base: var(--bg-secondary);
+  --hud-panel: var(--bg-tertiary);
+  --hud-line: var(--border-color);
+  --hud-line-muted: rgba(255, 255, 255, 0.08);
+
+  --hud-cyan-rgb: 0 255 255;
+  --hud-magenta-rgb: 255 0 128;
+  --hud-glow-rgb: 6 255 165;
+  --hud-cyan-dim: rgba(0, 255, 255, 0.1);
+  --hud-magenta-dim: rgba(255, 0, 128, 0.12);
+
+  --ui-primary: var(--text-primary);
+  --ui-secondary: var(--text-secondary);
+  --ui-muted: var(--text-secondary);
+  --ui-subtle: var(--text-muted);
+
+  --surface-overlay: rgba(10, 10, 15, 0.75);
+  --surface-wash: rgba(255, 0, 128, 0.04);
+  --surface-inset: rgba(0, 255, 255, 0.04);
+  --surface-pill: rgba(20, 20, 31, 0.85);
+
+  --shadow-hud: 0 0 0 1px rgba(0, 255, 255, 0.2), var(--shadow-glow);
+  --shadow-hud-magenta: 0 0 0 1px rgba(255, 0, 128, 0.35), 0 0 24px rgba(255, 0, 128, 0.35);
+  --shadow-hud-inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-scale-active: 0 0 28px rgba(0, 255, 255, 0.45);
+  --shadow-pipeline-ready: 0 0 16px rgba(6, 255, 165, 0.4);
+  --shadow-pipeline-busy: 0 0 20px rgba(0, 255, 255, 0.4);
+  --shadow-pipeline-exporting: 0 0 18px rgba(255, 0, 128, 0.45);
+
+  --preview-vignette: inset 0 0 100px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(255, 0, 128, 0.06);
+  --chassis-ambient: 0 0 80px -20px rgba(255, 0, 128, 0.35), 0 0 60px -24px rgba(0, 255, 255, 0.25);
+
+  --canvas-depth:
+    radial-gradient(ellipse 100% 55% at 50% 110%, rgba(255, 0, 128, 0.12), transparent 52%),
+    radial-gradient(ellipse 70% 48% at 8% 18%, rgba(0, 255, 255, 0.1), transparent 55%),
+    radial-gradient(ellipse 45% 40% at 92% 50%, rgba(123, 44, 191, 0.08), transparent 50%),
+    linear-gradient(168deg, #14141f 0%, #0a0a0f 45%, #050508 100%);
+
+  --bg-mesh:
+    radial-gradient(ellipse 88% 52% at 50% -8%, rgba(0, 255, 255, 0.12), transparent 54%),
+    radial-gradient(ellipse 48% 42% at 96% 44%, rgba(255, 0, 128, 0.08), transparent 48%);
+  --bg-grid:
+    linear-gradient(to right, rgba(0, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 255, 255, 0.06) 1px, transparent 1px);
+
+  --panel-bg-a: rgba(30, 30, 46, 0.92);
+  --panel-bg-b: rgba(20, 20, 31, 0.9);
+  --panel-border: rgba(255, 0, 128, 0.25);
+  --panel-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  --glass-bg-a: rgba(30, 30, 46, 0.75);
+  --glass-bg-b: rgba(20, 20, 31, 0.7);
+
+  --drop-active-shadow: 0 0 40px rgba(255, 0, 128, 0.4);
+  --scrollbar-track: rgba(0, 255, 255, 0.04);
+  --scrollbar-thumb: rgba(255, 0, 128, 0.35);
+  --scrollbar-thumb-hover: rgba(0, 255, 255, 0.45);
+  --topbar-mid: #12121c;
+  --topbar-shine: rgba(0, 255, 255, 0.35);
+  --toast-success-bg: rgba(20, 20, 31, 0.96);
+  --toast-success-border: rgba(0, 255, 255, 0.25);
+  --toast-success-glow: rgba(255, 0, 128, 0.3);
+  --backdrop-overlay: rgba(5, 5, 12, 0.85);
+  --preview-overlay: rgba(0, 0, 0, 0.65);
+  --progress-track: rgba(0, 255, 255, 0.12);
+
+  --theme-chassis-style: gradient;
+  --theme-btn-style: glow;
+}
+
+/* ─── 2. CARBON PRO ────────────────────────────────────────────────────── */
+[data-app-theme='carbon-pro'],
+.theme-carbon-pro {
+  color-scheme: dark;
+
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --bg-tertiary: #2e2e2e;
+  --bg-quaternary: #383838;
+
+  --accent-primary: #00d9ff;
+  --accent-secondary: #e0e0e0;
+
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --text-muted: #606060;
+
+  --border-color: #383838;
+  --glass-bg: rgba(36, 36, 36, 0.95);
+  --glass-border: #383838;
+  --shadow-glow: none;
+  --shadow-depth: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 16px rgba(0, 0, 0, 0.3);
+  --shadow-soft: var(--shadow-depth);
+
+  --hud-void: var(--bg-primary);
+  --hud-base: var(--bg-secondary);
+  --hud-panel: var(--bg-tertiary);
+  --hud-line: var(--border-color);
+  --hud-line-muted: #2e2e2e;
+
+  --hud-cyan-rgb: 0 217 255;
+  --hud-magenta-rgb: 224 224 224;
+  --hud-glow-rgb: 0 217 255;
+  --hud-cyan-dim: rgba(0, 217, 255, 0.08);
+  --hud-magenta-dim: rgba(224, 224, 224, 0.06);
+
+  --ui-primary: var(--text-primary);
+  --ui-secondary: var(--text-secondary);
+  --ui-muted: var(--text-secondary);
+  --ui-subtle: var(--text-muted);
+
+  --surface-overlay: #242424;
+  --surface-wash: #2e2e2e;
+  --surface-inset: #1a1a1a;
+  --surface-pill: #2e2e2e;
+
+  --shadow-hud: var(--shadow-depth);
+  --shadow-hud-magenta: var(--shadow-depth);
+  --shadow-hud-inner: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-scale-active: 0 0 0 1px var(--accent-primary), var(--shadow-depth);
+  --shadow-pipeline-ready: var(--shadow-depth);
+  --shadow-pipeline-busy: 0 0 0 1px rgba(0, 217, 255, 0.5), var(--shadow-depth);
+  --shadow-pipeline-exporting: var(--shadow-depth);
+
+  --preview-vignette: inset 0 0 80px rgba(0, 0, 0, 0.5);
+  --chassis-ambient: var(--shadow-depth);
+
+  --canvas-depth: linear-gradient(180deg, #242424 0%, #1a1a1a 100%);
+  --bg-mesh: none;
+  --bg-grid: none;
+
+  --panel-bg-a: var(--bg-secondary);
+  --panel-bg-b: var(--bg-primary);
+  --panel-border: var(--border-color);
+  --panel-shadow: var(--shadow-depth);
+
+  --glass-bg-a: var(--bg-secondary);
+  --glass-bg-b: var(--bg-primary);
+  --glass-border: var(--border-color);
+
+  --drop-active-shadow: 0 0 0 1px var(--accent-primary), var(--shadow-depth);
+  --scrollbar-track: #1a1a1a;
+  --scrollbar-thumb: #383838;
+  --scrollbar-thumb-hover: #4a4a4a;
+  --topbar-mid: #242424;
+  --topbar-shine: rgba(0, 217, 255, 0.2);
+  --toast-success-bg: #242424;
+  --toast-success-border: var(--border-color);
+  --toast-success-glow: transparent;
+  --backdrop-overlay: rgba(0, 0, 0, 0.75);
+  --preview-overlay: rgba(0, 0, 0, 0.55);
+  --progress-track: #383838;
+
+  --blur-strength: 0px;
+  --theme-chassis-style: flat;
+  --theme-btn-style: flat;
+}
+
+/* ─── 3. WARM STUDIO ───────────────────────────────────────────────────── */
+[data-app-theme='warm-studio'],
+.theme-warm-studio {
+  color-scheme: light;
+
+  --bg-primary: #faf8f3;
+  --bg-secondary: #f5f2ea;
+  --bg-tertiary: #ebe6d9;
+  --bg-quaternary: #e0d9c8;
+
+  --accent-primary: #8b4513;
+  --accent-secondary: #d4a574;
+
+  --text-primary: #2d2d2d;
+  --text-secondary: #5a5a5a;
+  --text-muted: #8a8a8a;
+
+  --border-color: transparent;
+  --glass-bg: rgba(245, 242, 234, 0.92);
+  --glass-border: transparent;
+  --shadow-glow: none;
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-depth: 0 4px 16px rgba(45, 45, 45, 0.06), 0 1px 3px rgba(45, 45, 45, 0.04);
+
+  --hud-void: var(--bg-primary);
+  --hud-base: var(--bg-secondary);
+  --hud-panel: var(--bg-tertiary);
+  --hud-line: transparent;
+  --hud-line-muted: transparent;
+
+  --hud-cyan-rgb: 139 69 19;
+  --hud-magenta-rgb: 212 165 116;
+  --hud-glow-rgb: 139 69 19;
+  --hud-cyan-dim: rgba(139, 69, 19, 0.1);
+  --hud-magenta-dim: rgba(212, 165, 116, 0.15);
+
+  --ui-primary: var(--text-primary);
+  --ui-secondary: var(--text-secondary);
+  --ui-muted: var(--text-muted);
+  --ui-subtle: var(--text-muted);
+
+  --surface-overlay: var(--bg-secondary);
+  --surface-wash: var(--bg-tertiary);
+  --surface-inset: var(--bg-primary);
+  --surface-pill: #ffffff;
+
+  --shadow-hud: var(--shadow-soft);
+  --shadow-hud-magenta: var(--shadow-soft);
+  --shadow-hud-inner: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --shadow-scale-active: 0 4px 20px rgba(139, 69, 19, 0.18);
+  --shadow-pipeline-ready: var(--shadow-soft);
+  --shadow-pipeline-busy: 0 2px 12px rgba(139, 69, 19, 0.15);
+  --shadow-pipeline-exporting: var(--shadow-soft);
+
+  --preview-vignette: inset 0 0 60px rgba(45, 45, 45, 0.04);
+  --chassis-ambient: var(--shadow-soft);
+
+  --canvas-depth: linear-gradient(175deg, #faf8f3 0%, #f5f2ea 50%, #ebe6d9 100%);
+  --bg-mesh: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(212, 165, 116, 0.12), transparent 55%);
+  --bg-grid: none;
+
+  --panel-bg-a: #ffffff;
+  --panel-bg-b: var(--bg-secondary);
+  --panel-border: transparent;
+  --panel-shadow: var(--shadow-soft);
+
+  --glass-bg-a: rgba(255, 255, 255, 0.94);
+  --glass-bg-b: var(--bg-secondary);
+  --glass-border: transparent;
+
+  --drop-active-shadow: 0 8px 28px rgba(139, 69, 19, 0.12);
+  --scrollbar-track: var(--bg-tertiary);
+  --scrollbar-thumb: rgba(139, 69, 19, 0.25);
+  --scrollbar-thumb-hover: rgba(139, 69, 19, 0.4);
+  --topbar-mid: var(--bg-secondary);
+  --topbar-shine: rgba(139, 69, 19, 0.15);
+  --toast-success-bg: #ffffff;
+  --toast-success-border: transparent;
+  --toast-success-glow: var(--shadow-soft);
+  --backdrop-overlay: rgba(45, 45, 45, 0.25);
+  --preview-overlay: rgba(45, 45, 45, 0.35);
+  --progress-track: rgba(139, 69, 19, 0.12);
+
+  --blur-strength: 8px;
+  --theme-chassis-style: soft;
+  --theme-btn-style: soft;
+}

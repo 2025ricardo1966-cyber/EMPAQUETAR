@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "module": "commonjs",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node"
+  },
+  "include": [
+    "src/cloud/**/*",
+    "src/contracts/**/*",
+    "src/main/**/*",
+    "src/i18n/**/*",
+    "src/modules/apparel-studio/export/**/*",
+    "src/modules/apparel-studio/moldes/types.ts",
+    "src/modules/apparel-studio/moldes/engine/**/*",
+    "src/modules/apparel-studio/moldes/catalog/**/*",
+    "src/modules/apparel-studio/mpt/types.ts",
+    "src/modules/apparel-studio/mpt/engine/**/*",
+    "src/modules/apparel-studio/mpt/catalog/**/*",
+    "src/modules/apparel-studio/mpt/index.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

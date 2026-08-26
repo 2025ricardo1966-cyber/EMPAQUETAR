@@ -1,0 +1,24 @@
+{
+  "notifications": {
+    "order_ready": "O seu trabalho está pronto para retirar. Pedido #{{orderNumber}}.",
+    "admin_replied": "A oficina respondeu a sua consulta: {{subject}}"
+  },
+  "emails": {
+    "subject": {
+      "verify_email": "Verifique seu e-mail para começar a usar {{tenantName}}",
+      "order_ready": "Seu trabalho está pronto para retirada — pedido #{{orderNumber}}",
+      "message_replied": "A oficina respondeu a sua consulta: {{subject}}"
+    },
+    "body": {
+      "verify_email_cta": "Verificar e-mail",
+      "order_ready_body": "Seu trabalho está pronto para retirar."
+    }
+  },
+  "workflow": {
+    "steps": {
+      "PRODUCTION": "Em produção",
+      "READY": "Pronto para retirar",
+      "RECEIVED": "Recebido"
+    }
+  }
+}

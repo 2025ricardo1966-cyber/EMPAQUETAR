@@ -1,0 +1,27 @@
+{
+  "notifications": {
+    "order_ready": "Your job is ready for pickup. Order #{{orderNumber}}.",
+    "payment_confirmed": "Payment confirmed. Order #{{orderNumber}} entered production.",
+    "admin_replied": "The workshop replied to your message: {{subject}}"
+  },
+  "emails": {
+    "subject": {
+      "payment_confirmed": "Payment confirmed — order #{{orderNumber}} entered production",
+      "order_ready": "Your job is ready for pickup — order #{{orderNumber}}",
+      "message_replied": "The workshop replied to your message: {{subject}}"
+    },
+    "body": {
+      "payment_confirmed_body": "Your payment was confirmed. Your order entered production.",
+      "order_ready_body": "Your job is finished and ready for pickup."
+    }
+  },
+  "workflow": {
+    "steps": {
+      "RECEIVED": "Received",
+      "REVIEWING": "In review",
+      "PRODUCTION": "In production",
+      "READY": "Ready for pickup",
+      "COMPLETED": "Delivered"
+    }
+  }
+}
