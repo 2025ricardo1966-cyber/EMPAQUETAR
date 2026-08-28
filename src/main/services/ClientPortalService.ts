@@ -230,8 +230,8 @@ export class ClientPortalService {
       password: await hashPassword(input.password),
       createdAt: now,
       updatedAt: now,
-      emailVerified: false,
-      verificationToken,
+      emailVerified: !process.env.RESEND_API_KEY,
+      verificationToken: process.env.RESEND_API_KEY ? verificationToken : null,
       verificationExpiresAt: now + 24 * 60 * 60 * 1000,
       preferredLanguage,
     };
@@ -2192,6 +2192,24 @@ export class ClientPortalService {
       status: fresh.status,
       files: generated.files,
       revision: generated.revision,
+    };
+  }
+
+  async downloadOrderFile(ctx: AuthContext, orderId: string, fileId: string) {
+    await this.requireCustomer(ctx);
+    await this.orders.getOrderForCustomer(orderId, ctx.tenantId, ctx.userId);
+    const file = await this.store.getOrderFile(fileId);
+    if (!file || file.tenantId !== ctx.tenantId || file.orderId !== orderId || file.customerId !== ctx.userId) {
+      throw new AccessDeniedError();
+    }
+    const bytes = await this.store.readBlob(file.id);
+    if (!bytes?.length) throw new AccessDeniedError();
+    return {
+      id: file.id,
+      filename: file.filename,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      contentBase64: bytes.toString('base64'),
     };
   }
 

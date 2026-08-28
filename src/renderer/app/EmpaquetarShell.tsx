@@ -3,8 +3,9 @@ import { classifyPath, decideAccess, homePathForRole, redirectPathForForbidden }
 import { useAuth } from './providers/AuthProvider';
 import { useHashPath } from './router/useHashPath';
 import { AdminLayout, AuthLayout, ClientLayout, PlatformLayout, WorkspaceLayout } from './layouts/layouts';
-import { AreaScaffold, LoginPage, PlatformAreaPage, StatusPage, VerifyPage } from './pages/scaffolds';
+import { AccessPage, PlatformAreaPage, StatusPage, VerifyPage } from './pages/scaffolds';
 import { AdminAreaPage, ClientAreaPage } from './pages/area-pages';
+import { WorkspaceAreaPage } from './pages/WorkspaceAreaPage';
 
 /** Cloud/web area scaffolds. Standalone EMPAQUETAR: `#/` is login, not AI Studio. */
 export const EmpaquetarShell: React.FC = () => {
@@ -15,7 +16,7 @@ export const EmpaquetarShell: React.FC = () => {
 
   useEffect(() => {
     if (isLoading) return;
-    if (user && area === 'public' && path === '/login') {
+    if (user && area === 'public' && (path === '/login' || path === '/register' || path === '/activate')) {
       navigate(homePathForRole(user.roleId));
       return;
     }
@@ -29,14 +30,14 @@ export const EmpaquetarShell: React.FC = () => {
   }, [area, decision, isLoading, navigate, path, user]);
 
   if (area === 'studio') {
-    return <AuthLayout><LoginPage /></AuthLayout>;
+    return <AuthLayout><AccessPage /></AuthLayout>;
   }
   if (isLoading && area !== 'public') return <StatusPage messageKey="app.loading" />;
   if (decision === 'unauthenticated' && area !== 'public') return <StatusPage messageKey="app.loading" />;
   if (decision === 'forbidden') return <StatusPage messageKey="app.loading" />;
   if (area === 'unknown') return <StatusPage messageKey="app.not_found" />;
   if (area === 'public') {
-    return <AuthLayout>{path === '/verify' ? <VerifyPage /> : <LoginPage />}</AuthLayout>;
+    return <AuthLayout>{path === '/verify' ? <VerifyPage /> : <AccessPage />}</AuthLayout>;
   }
   if (area === 'client') {
     return (
@@ -48,7 +49,7 @@ export const EmpaquetarShell: React.FC = () => {
   if (area === 'workspace') {
     return (
       <WorkspaceLayout>
-        <AreaScaffold titleKey="navigation.workspace" />
+        <WorkspaceAreaPage />
       </WorkspaceLayout>
     );
   }

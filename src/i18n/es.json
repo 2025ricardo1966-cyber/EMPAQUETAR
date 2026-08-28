@@ -127,6 +127,23 @@
     "restricted": "Tu membresía no permite operar ahora. Comunicate con el taller.",
     "notifications": "Avisos"
   },
+  "access": {
+    "activate": "Activar taller",
+    "register": "Crear cuenta de cliente",
+    "workshop_name": "Nombre del taller",
+    "admin_email": "Email del administrador",
+    "your_name": "Tu nombre",
+    "activated": "Taller activado. Ya podés operar.",
+    "registered": "Cuenta creada."
+  },
+  "ops": {
+    "outputs": "Archivos de producción",
+    "files": "Archivos",
+    "trace": "Trazabilidad",
+    "download": "Descargar",
+    "customer": "Cliente",
+    "no_orders": "No hay pedidos todavía."
+  },
   "admin": {
     "inbox": "Comunicaciones",
     "classify": "Clasificar",

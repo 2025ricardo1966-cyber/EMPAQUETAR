@@ -6,6 +6,7 @@ import { OrderConflictError, OrderTransitionError, redactOrderForViewer } from '
 import type { ControlPlaneKernel } from './kernel';
 import {
   ActivateAdminRepository,
+  WorkshopAdminRepository,
   adminForTenant,
   assertPerm,
   buildCreateOrder,
@@ -42,6 +43,7 @@ import { OpsOrderService } from '../main/services/OpsOrderService';
 import { detectLanguage, t } from '../i18n';
 import { randomUUID } from 'crypto';
 import { getCachedTenantStatus } from './tenant-status-cache';
+import { tryServeStatic } from './static';
 
 const rate = new Map<string, { n: number; t: number }>();
 
@@ -120,6 +122,7 @@ async function handle(kernel: ControlPlaneKernel, req: http.IncomingMessage, res
     send(res, 204, {}, requestId);
     return;
   }
+  if (tryServeStatic(req, res, path)) return;
   try {
     const result = await route(kernel, req, method, path, url, requestId);
     send(res, result.status, result.body, requestId);
@@ -323,11 +326,28 @@ async function route(
   const { store, env } = kernel;
   const ip = clientIp(req);
   if (method === 'GET' && path === '/health') {
-    return { status: 200, body: { ok: true, role: 'control-plane', env: env.name } };
+    return { status: 200, body: { ok: true, role: 'control-plane', env: env.name, ephemeral: env.dataEphemeral } };
   }
   if (method === 'GET' && path === '/ready') {
     const db = await kernel.db.ready();
     return { status: db ? 200 : 503, body: { ready: db, db } };
+  }
+  if (method === 'GET' && path === '/public/workshop') {
+    const tenants = await store.listTenants();
+    const tenant =
+      tenants.find((row) => row.status === 'ACTIVE' || row.activated) ||
+      tenants.find((row) => row.status === 'SETUP_INCOMPLETE') ||
+      tenants[0];
+    if (!tenant) return { status: 200, body: { activated: false } };
+    return {
+      status: 200,
+      body: {
+        activated: tenant.status === 'ACTIVE' || !!tenant.activated,
+        status: tenant.status,
+        tenantId: tenant.tenantId,
+        name: tenant.name,
+      },
+    };
   }
   if (method === 'GET' && path === '/contract') {
     return {
@@ -388,11 +408,19 @@ async function route(
 
   if (method === 'POST' && path === '/auth/activate') {
     if (!rateLimit(`act:${ip}`, 8, 60_000)) return { status: 429, body: { error: 'RATE_LIMIT' } };
-    const admin = new AdminService(new ActivateAdminRepository(store), kernel.orders, kernel.control);
+    const admin = new AdminService(new WorkshopAdminRepository(store), kernel.orders, kernel.control);
     const created = await admin.activate({
       organizationName: String(body.organizationName || ''),
       principalLogin: String(body.principalLogin || 'ADMIN'),
       principalPassword: String(body.principalPassword || ''),
+    }).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : '';
+      if (/already activated/i.test(message)) {
+        const conflict = new Error('TENANT_ALREADY_ACTIVATED');
+        (conflict as { status?: number }).status = 409;
+        throw conflict;
+      }
+      throw err;
     });
     return { status: 200, body: created };
   }
@@ -1699,6 +1727,11 @@ async function route(
       authorize(['ADMIN_PRINCIPAL', 'SUBADMIN', 'ADMIN', 'OPERATOR'])(ctx);
       return { status: 200, body: await ws.listFiles(ctx, orderId), tenant: tenantId };
     }
+    const fileGet = rest.match(/^files\/([^/]+)$/);
+    if (method === 'GET' && fileGet) {
+      authorize(['ADMIN_PRINCIPAL', 'SUBADMIN', 'ADMIN', 'OPERATOR'])(ctx);
+      return { status: 200, body: await ws.downloadOrderFile(ctx, orderId, fileGet[1]), tenant: tenantId };
+    }
     const convert = rest.match(/^files\/([^/]+)\/convert$/);
     if (method === 'POST' && convert) {
       authorize(['ADMIN_PRINCIPAL', 'SUBADMIN', 'ADMIN'])(ctx);
@@ -2153,6 +2186,10 @@ async function clientPortalRoutes(
           contentBase64: String(body.contentBase64 || ''),
         })
       );
+    }
+    const clientFile = rest.match(/^files\/([^/]+)$/);
+    if (method === 'GET' && clientFile) {
+      return wrap(200, await service.downloadOrderFile(ctx, orderId, clientFile[1]));
     }
     if (method === 'POST' && rest === 'roster') {
       return wrap(

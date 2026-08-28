@@ -16,15 +16,27 @@ Origen de esta copia: `AI_UPSCALER` (MASCAYL Platform). El origen no se modifica
 
 ```bash
 npm install
-npx tsc -p tsconfig.cloud.json
-node dist/cloud/server.js
+npm run build
+PORT=8787 MASCAYL_DATA_DIR=.data npm start
 ```
 
-En otra terminal:
+Abrir `http://127.0.0.1:8787/#/login`.
+
+Desarrollo con Vite (API en 8787, proxy incluido):
 
 ```bash
-set VITE_API_URL=http://127.0.0.1:8787
+npx tsc -p tsconfig.cloud.json
+node dist/cloud/server.js
+# otra terminal
 npx vite
 ```
 
 Abrir `http://localhost:5173/#/login`.
+
+## Producción
+
+- Build: `npm run build` (Vite + `tsc` cloud)
+- Start: `node dist/cloud/server.js`
+- Puerto: `PORT` (Railway) o `MASCAYL_CONTROL_PLANE_PORT` / 8787
+- Datos: `MASCAYL_DATA_DIR` (Railway: volumen en `/data`)
+- JWT: `MASCAYL_JWT_SECRET` o secreto persistido en el volumen

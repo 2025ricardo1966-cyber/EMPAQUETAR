@@ -5,8 +5,12 @@
   "description": "EMPAQUETAR — producto Cloud bajo ORA — Ingeniería Digital",
   "type": "commonjs",
   "scripts": {
+    "dev": "vite",
     "dev:vite": "vite",
+    "build": "npm run build:web && npm run build:cloud",
+    "build:web": "vite build",
     "build:cloud": "tsc -p tsconfig.cloud.json",
+    "start": "node dist/cloud/server.js",
     "cloud": "node dist/cloud/server.js",
     "typecheck:cloud": "tsc -p tsconfig.cloud.json --noEmit",
     "test": "node --test --test-timeout=180000 dist/contracts/order-production-output.test.js dist/cloud/production-cycle.test.js"
