@@ -93,6 +93,7 @@ import {
   visualVersionFromForm,
 } from '../../contracts/product-library';
 import { scaleGraphic } from './ora/file-graphics';
+import { presentClientFlow, readFlowConfiguration } from '../../contracts/flow-configuration';
 import {
   parseOjoHints,
   parseOjoRegion,
@@ -318,6 +319,12 @@ export class ClientPortalService {
     };
   }
 
+  async getFlowConfiguration(ctx: AuthContext) {
+    await this.requireCustomer(ctx);
+    const config = await this.requireConfig(ctx.tenantId);
+    return presentClientFlow(readFlowConfiguration(config));
+  }
+
   async updateProfile(ctx: AuthContext, body: Record<string, unknown>) {
     const profile = await this.requireCustomer(ctx);
     const user = await this.store.getUser(ctx.userId);
@@ -428,6 +435,9 @@ export class ClientPortalService {
       showConsumption?: boolean;
       showMaterials?: boolean;
     };
+    const flow = presentClientFlow(readFlowConfiguration(config));
+    const hideConsumption = vis.showConsumption === false || flow.features.consumption === false;
+    const hideMaterials = vis.showMaterials === false || flow.features.materials === false;
     return {
       ...this.listItem(order, ctx.lang),
       notes: order.formValues?.notes || order.summary,
@@ -440,10 +450,10 @@ export class ClientPortalService {
         at: h.at,
         atIso: new Date(h.at).toISOString(),
       })),
-      consumption: vis.showConsumption === false
+      consumption: hideConsumption
         ? []
         : (order.consumptions || []).map((c) => ({
-            name: vis.showMaterials === false ? undefined : c.name,
+            name: hideMaterials ? undefined : c.name,
             quantity: c.quantity,
             unit: c.unit,
             unitPrice: c.customerUnitPrice,

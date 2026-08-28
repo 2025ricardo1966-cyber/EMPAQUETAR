@@ -78,6 +78,7 @@ export type ConfigDomainEventType =
   | 'MATERIAL_CREATED'
   | 'MATERIAL_UPDATED'
   | 'WORKFLOW_CONFIG_UPDATED'
+  | 'FLOW_CONFIGURATION_UPDATED'
   | 'PRODUCT_PRICE_UPDATED'
   | 'MATERIAL_COST_UPDATED'
   | 'COMMERCIAL_CONFIG_UPDATED';
@@ -381,6 +382,7 @@ export function eventTitle(eventType: string): string {
     MATERIAL_CREATED: 'Material creado',
     MATERIAL_UPDATED: 'Material actualizado',
     WORKFLOW_CONFIG_UPDATED: 'Workflow de taller actualizado',
+    FLOW_CONFIGURATION_UPDATED: 'Configuración del flujo actualizada',
     PRODUCT_PRICE_UPDATED: 'Precio de producto actualizado',
     MATERIAL_COST_UPDATED: 'Costo de material actualizado',
     COMMERCIAL_CONFIG_UPDATED: 'Configuración comercial actualizada',

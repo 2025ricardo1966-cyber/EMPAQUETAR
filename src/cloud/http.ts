@@ -1000,6 +1000,12 @@ async function route(
     if (method === 'PUT' && path === '/admin/config/client-visibility') {
       return { status: 200, body: await cfg.putClientVisibility(ctx, body), tenant: tenantId };
     }
+    if (method === 'GET' && path === '/admin/config/flow') {
+      return { status: 200, body: await cfg.getFlowConfiguration(ctx), tenant: tenantId };
+    }
+    if (method === 'PUT' && path === '/admin/config/flow') {
+      return { status: 200, body: await cfg.putFlowConfiguration(ctx, body), tenant: tenantId };
+    }
     if (method === 'GET' && path === '/admin/config/limits') {
       return { status: 200, body: await cfg.getLimits(ctx), tenant: tenantId };
     }
@@ -2101,6 +2107,9 @@ async function clientPortalRoutes(
   if (method === 'GET' && path === '/client/fulfillment-options') {
     const opts = await kernel.fulfillment.options(ctx);
     return wrap(200, kernel.fulfillment.publicOptions(opts, ctx.lang || 'es'));
+  }
+  if (method === 'GET' && path === '/client/flow-configuration') {
+    return wrap(200, await service.getFlowConfiguration(ctx));
   }
   if (method === 'GET' && path === '/client/profile') {
     return wrap(200, await service.getProfile(ctx));

@@ -5,16 +5,19 @@ type Props = {
   imageUrl: string;
   value?: OjoRegion | null;
   onChange: (region: OjoRegion) => void;
+  allowRect?: boolean;
+  allowEllipse?: boolean;
 };
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
-export const OjoZoneMark: React.FC<Props> = ({ imageUrl, value, onChange }) => {
+export const OjoZoneMark: React.FC<Props> = ({ imageUrl, value, onChange, allowRect = true, allowEllipse = true }) => {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
-  const [shape, setShape] = useState<OjoRegionShape>(value?.shape || 'rect');
+  const initialShape: OjoRegionShape = value?.shape || (allowRect ? 'rect' : 'ellipse');
+  const [shape, setShape] = useState<OjoRegionShape>(initialShape);
   const [draft, setDraft] = useState<OjoRegion | null>(value || null);
   const drag = useRef<{ x0: number; y0: number; active: boolean } | null>(null);
 
@@ -69,6 +72,7 @@ export const OjoZoneMark: React.FC<Props> = ({ imageUrl, value, onChange }) => {
     <div data-ojo="zone" ref={wrapRef}>
       <p data-ojo="prompt">MARQUE LA ZONA QUE DESEA INTERPRETAR</p>
       <div data-ojo="tools">
+        {allowRect ? (
         <button
           type="button"
           aria-pressed={shape === 'rect'}
@@ -77,6 +81,8 @@ export const OjoZoneMark: React.FC<Props> = ({ imageUrl, value, onChange }) => {
         >
           Marco rectangular
         </button>
+        ) : null}
+        {allowEllipse ? (
         <button
           type="button"
           aria-pressed={shape === 'ellipse'}
@@ -85,6 +91,7 @@ export const OjoZoneMark: React.FC<Props> = ({ imageUrl, value, onChange }) => {
         >
           Marco elíptico
         </button>
+        ) : null}
       </div>
       <div
         data-ojo="canvas"

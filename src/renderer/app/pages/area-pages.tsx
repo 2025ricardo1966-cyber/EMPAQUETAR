@@ -7,6 +7,7 @@ import { useTenant } from '../providers/TenantProvider';
 import { useHashPath } from '../router/useHashPath';
 import { ClientOrderFlow } from './ClientOrderFlow';
 import { OrderOpsPanel } from './OrderOpsPanel';
+import { AdminFlowConfigPanel } from './AdminFlowConfigPanel';
 
 function fileToBase64(file: File): Promise<{ name: string; mime: string; content: string }> {
   return new Promise((resolve, reject) => {
@@ -105,6 +106,7 @@ export const ClientAreaPage: React.FC = () => {
   const [orderTotal, setOrderTotal] = useState(0);
   const [notifications, setNotifications] = useState<Array<{ notificationId?: string; title?: string; customerMessage?: string; read?: boolean }>>([]);
   const [panel, setPanel] = useState<'catalog' | 'follow' | 'inbox' | 'profile'>('catalog');
+  const [messagingOn, setMessagingOn] = useState(true);
   const [detail, setDetail] = useState<{
     number?: string;
     projectName?: string;
@@ -143,6 +145,13 @@ export const ClientAreaPage: React.FC = () => {
   }, [api]);
 
   useEffect(() => {
+    void api
+      .get('/client/flow-configuration')
+      .then((res) => {
+        const data = res.data as { features?: { messaging?: boolean } };
+        setMessagingOn(data.features?.messaging !== false);
+      })
+      .catch(() => undefined);
     void api
       .get('/client/profile')
       .then((res) => {
@@ -286,9 +295,11 @@ export const ClientAreaPage: React.FC = () => {
         <button type="button" onClick={() => setPanel('follow')}>
           {t('client.orders')}
         </button>
+        {messagingOn ? (
         <button type="button" onClick={() => setPanel('inbox')}>
           {t('client.messages')}
         </button>
+        ) : null}
         <button type="button" onClick={() => setPanel('profile')}>
           {t('client.profile')}
         </button>
@@ -346,7 +357,7 @@ export const ClientAreaPage: React.FC = () => {
         </div>
       ) : null}
 
-      {panel === 'inbox' ? (
+      {panel === 'inbox' && messagingOn ? (
         <div>
           <h2>{t('client.messages')}</h2>
           {restricted ? <p>{t('client.restricted')}</p> : null}
@@ -1209,6 +1220,7 @@ export const AdminAreaPage: React.FC = () => {
           </select>
         </form>
       ) : null}
+      <AdminFlowConfigPanel />
       <h2>{t('admin.commercial')}</h2>
       <form
         onSubmit={(e) => {

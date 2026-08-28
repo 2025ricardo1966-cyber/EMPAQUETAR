@@ -13,9 +13,10 @@
     "start": "node dist/cloud/server.js",
     "cloud": "node dist/cloud/server.js",
     "typecheck:cloud": "tsc -p tsconfig.cloud.json --noEmit",
-    "test": "node --test --test-timeout=180000 dist/contracts/order-production-output.test.js dist/cloud/production-cycle.test.js dist/contracts/ojo-visual-interpreter.test.js dist/contracts/payment-currency.test.js dist/cloud/ojo-ingest-flow.test.js dist/contracts/product-library.test.js dist/cloud/adaptive-preview.test.js",
+    "test": "node --test --test-timeout=180000 dist/contracts/order-production-output.test.js dist/cloud/production-cycle.test.js dist/contracts/ojo-visual-interpreter.test.js dist/contracts/payment-currency.test.js dist/cloud/ojo-ingest-flow.test.js dist/contracts/product-library.test.js dist/cloud/adaptive-preview.test.js dist/contracts/flow-configuration.test.js dist/cloud/flow-configuration.test.js",
     "test:ojo": "node --test --test-timeout=180000 dist/contracts/ojo-visual-interpreter.test.js dist/cloud/ojo-ingest-flow.test.js",
-    "test:preview": "node --test --test-timeout=180000 dist/contracts/product-library.test.js dist/cloud/adaptive-preview.test.js"
+    "test:preview": "node --test --test-timeout=180000 dist/contracts/product-library.test.js dist/cloud/adaptive-preview.test.js",
+    "test:flow": "node --test --test-timeout=180000 dist/contracts/flow-configuration.test.js dist/cloud/flow-configuration.test.js"
   },
   "engines": {
     "node": ">=20"
