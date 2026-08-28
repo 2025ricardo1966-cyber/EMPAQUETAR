@@ -10,17 +10,40 @@ type FeatureRow = {
   displayOrder: number;
 };
 
-type Catalog = {
-  features: Array<{ key: FlowFeatureKey; label: string }>;
-  actions: Array<{ key: FlowActionKey; label: string }>;
+type CapabilityRow = {
+  key: FlowFeatureKey;
+  label: string;
+  category: string;
+  supported: boolean;
+  configurable: boolean;
+  requires?: FlowFeatureKey[];
+  enabled: boolean;
+  displayOrder: number;
+  tenantId: string;
+  actionKey?: FlowActionKey | null;
 };
 
 type FlowDto = {
   features: FeatureRow[];
   actionOrder: FlowActionKey[];
-  catalog?: Catalog;
+  capabilities?: CapabilityRow[];
+  catalog?: {
+    source?: string;
+    categories?: string[];
+    commercialEnforced?: boolean;
+    actions?: Array<{ key: FlowActionKey; label: string }>;
+  };
   updatedAt?: number;
   updatedBy?: string | null;
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  core: 'Núcleo',
+  visual: 'Interpretación visual',
+  samples: 'Muestras y previsualización',
+  production: 'Producción',
+  commercial: 'Información comercial',
+  communication: 'Comunicación',
 };
 
 export const AdminFlowConfigPanel: React.FC = () => {
@@ -28,7 +51,8 @@ export const AdminFlowConfigPanel: React.FC = () => {
   const { t } = useI18n();
   const [flow, setFlow] = useState<FlowDto | null>(null);
   const [notice, setNotice] = useState('');
-  const [dragKey, setDragKey] = useState<FlowActionKey | null>(null);
+  const [dragCap, setDragCap] = useState<FlowFeatureKey | null>(null);
+  const [dragAction, setDragAction] = useState<FlowActionKey | null>(null);
 
   const load = useCallback(() => {
     void api
@@ -41,9 +65,33 @@ export const AdminFlowConfigPanel: React.FC = () => {
     load();
   }, [load]);
 
+  const rowsOf = (dto: FlowDto): CapabilityRow[] => {
+    if (dto.capabilities?.length) {
+      return dto.capabilities.filter((row) => row.supported !== false);
+    }
+    return (dto.features || []).map((f) => ({
+      key: f.featureKey,
+      label: f.featureKey,
+      category: '',
+      supported: true,
+      configurable: true,
+      enabled: f.enabled,
+      displayOrder: f.displayOrder,
+      tenantId: '',
+    }));
+  };
+
   const save = (next: FlowDto) => {
+    const capabilities = rowsOf(next);
     void api
-      .put('/admin/config/flow', { features: next.features, actionOrder: next.actionOrder })
+      .put('/admin/config/flow', {
+        features: capabilities.map((row) => ({
+          featureKey: row.key,
+          enabled: row.enabled,
+          displayOrder: row.displayOrder,
+        })),
+        actionOrder: next.actionOrder,
+      })
       .then((res) => {
         setFlow(res.data as FlowDto);
         setNotice('');
@@ -53,8 +101,40 @@ export const AdminFlowConfigPanel: React.FC = () => {
 
   const toggle = (key: FlowFeatureKey) => {
     if (!flow) return;
-    const features = flow.features.map((f) => (f.featureKey === key ? { ...f, enabled: !f.enabled } : f));
-    save({ ...flow, features });
+    const capabilities = rowsOf(flow).map((row) => {
+      if (row.key !== key || row.configurable === false) return row;
+      return { ...row, enabled: !row.enabled };
+    });
+    save({ ...flow, capabilities });
+  };
+
+  const moveRow = (key: FlowFeatureKey, dir: -1 | 1) => {
+    if (!flow) return;
+    const capabilities = [...rowsOf(flow)];
+    const idx = capabilities.findIndex((row) => row.key === key);
+    const next = idx + dir;
+    if (idx < 0 || next < 0 || next >= capabilities.length) return;
+    const tmp = capabilities[idx];
+    capabilities[idx] = capabilities[next];
+    capabilities[next] = tmp;
+    save({
+      ...flow,
+      capabilities: capabilities.map((row, i) => ({ ...row, displayOrder: i + 1 })),
+    });
+  };
+
+  const dropRow = (target: FlowFeatureKey) => {
+    if (!flow || !dragCap || dragCap === target) return;
+    const rest = rowsOf(flow).filter((row) => row.key !== dragCap);
+    const moving = rowsOf(flow).find((row) => row.key === dragCap);
+    if (!moving) return;
+    const at = rest.findIndex((row) => row.key === target);
+    rest.splice(at, 0, moving);
+    setDragCap(null);
+    save({
+      ...flow,
+      capabilities: rest.map((row, i) => ({ ...row, displayOrder: i + 1 })),
+    });
   };
 
   const moveAction = (key: FlowActionKey, dir: -1 | 1) => {
@@ -70,38 +150,67 @@ export const AdminFlowConfigPanel: React.FC = () => {
   };
 
   const dropAction = (target: FlowActionKey) => {
-    if (!flow || !dragKey || dragKey === target) return;
-    const order = flow.actionOrder.filter((k) => k !== dragKey);
+    if (!flow || !dragAction || dragAction === target) return;
+    const order = flow.actionOrder.filter((k) => k !== dragAction);
     const at = order.indexOf(target);
-    order.splice(at, 0, dragKey);
-    setDragKey(null);
+    order.splice(at, 0, dragAction);
+    setDragAction(null);
     save({ ...flow, actionOrder: order });
   };
 
-  const labelOf = (key: string) =>
-    flow?.catalog?.features.find((f) => f.key === key)?.label ||
-    flow?.catalog?.actions.find((a) => a.key === key)?.label ||
-    key;
+  const labelOf = (key: string) => {
+    const cap = flow?.capabilities?.find((row) => row.key === key);
+    if (cap?.label) return cap.label;
+    const action = flow?.catalog?.actions?.find((a) => a.key === key);
+    return action?.label || key;
+  };
+
+  const capabilities = flow ? rowsOf(flow) : [];
 
   return (
     <section data-admin="flow-config">
-      <h2>CONFIGURACIÓN DEL FLUJO</h2>
-      <p>Activa o desactiva capacidades visibles para el cliente. No modifica producción, pagos ni trazabilidad de pedidos.</p>
+      <h2>CONFIGURACIÓN DEL TALLER</h2>
+      <p>
+        Este es tu EMPAQUETAR: elige qué capacidades ofrece tu taller y en qué orden se presentan. Activar u ordenar
+        cambia la experiencia, no la producción, los pagos ni la trazabilidad.
+      </p>
       {flow ? (
         <>
-          <ul data-role="flow-features">
-            {flow.features.map((row) => (
-              <li key={row.featureKey}>
+          <ul data-role="flow-features" data-catalog-source={flow.catalog?.source || 'empaquetar-capabilities'}>
+            {capabilities.map((row, i) => (
+              <li
+                key={row.key}
+                draggable
+                onDragStart={() => setDragCap(row.key)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => dropRow(row.key)}
+              >
+                <span data-category={row.category}>{CATEGORY_LABEL[row.category] || row.category}</span>
                 <label>
                   <input
                     type="checkbox"
-                    aria-label={`flow-feature-${row.featureKey}`}
+                    aria-label={`flow-feature-${row.key}`}
                     checked={row.enabled}
-                    onChange={() => toggle(row.featureKey)}
+                    disabled={row.configurable === false}
+                    onChange={() => toggle(row.key)}
                   />
-                  {labelOf(row.featureKey)}
-                  <span data-enabled={row.enabled ? 'true' : 'false'}> {row.enabled ? '[ ACTIVADO ]' : '[ DESACTIVADO ]'}</span>
+                  {row.label}
+                  <span data-enabled={row.enabled ? 'true' : 'false'} data-configurable={row.configurable ? 'true' : 'false'}>
+                    {' '}
+                    {row.configurable === false ? '[ NÚCLEO · ACTIVADO ]' : row.enabled ? '[ ACTIVADO ]' : '[ DESACTIVADO ]'}
+                  </span>
                 </label>
+                <button type="button" aria-label={`flow-cap-up-${row.key}`} disabled={i === 0} onClick={() => moveRow(row.key, -1)}>
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label={`flow-cap-down-${row.key}`}
+                  disabled={i === capabilities.length - 1}
+                  onClick={() => moveRow(row.key, 1)}
+                >
+                  ↓
+                </button>
               </li>
             ))}
           </ul>
@@ -111,7 +220,7 @@ export const AdminFlowConfigPanel: React.FC = () => {
               <li
                 key={key}
                 draggable
-                onDragStart={() => setDragKey(key)}
+                onDragStart={() => setDragAction(key)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => dropAction(key)}
               >

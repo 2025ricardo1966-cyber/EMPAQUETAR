@@ -7,12 +7,29 @@ import {
   presentClientFlow,
   resolveFlowActions,
 } from './flow-configuration';
+import { discoverWorkshopCapabilities } from './empaquetar-capabilities';
 
 test('defaults enable every known capability and keep a stable action order', () => {
   const cfg = defaultFlowConfiguration('t1');
-  assert.equal(cfg.features.length, 15);
+  assert.equal(cfg.features.length, 18);
   assert.equal(cfg.features.every((f) => f.enabled), true);
+  assert.ok(cfg.features.some((f) => f.featureKey === 'orders'));
+  assert.ok(cfg.features.some((f) => f.featureKey === 'preview'));
   assert.deepEqual(cfg.actionOrder, ['preview', 'download_2d', 'download_3d', 'continue_production']);
+});
+
+test('core capabilities cannot be disabled by tenant configuration', () => {
+  const cfg = parseFlowConfiguration(
+    {
+      features: [
+        { featureKey: 'orders', enabled: false },
+        { featureKey: 'traceability', enabled: false },
+      ],
+    },
+    't1'
+  );
+  assert.equal(flowFeatureEnabled(cfg, 'orders'), true);
+  assert.equal(flowFeatureEnabled(cfg, 'traceability'), true);
 });
 
 test('unknown keys are ignored and missing keys fall back to defaults', () => {
@@ -29,6 +46,30 @@ test('unknown keys are ignored and missing keys fall back to defaults', () => {
   assert.equal(flowFeatureEnabled(cfg, 'ojo'), false);
   assert.equal(flowFeatureEnabled(cfg, 'download_2d'), true);
   assert.deepEqual(cfg.actionOrder, ['continue_production', 'download_2d', 'preview', 'download_3d']);
+});
+
+test('client presentation keys come from the discovered catalog', () => {
+  const presented = presentClientFlow(defaultFlowConfiguration('t1'));
+  assert.deepEqual(
+    Object.keys(presented.features).sort(),
+    discoverWorkshopCapabilities()
+      .map((row) => row.key)
+      .slice()
+      .sort()
+  );
+});
+
+test('download 3D stays hidden when preview 3D is off even if download 3D is enabled', () => {
+  const cfg = parseFlowConfiguration(
+    {
+      features: [
+        { featureKey: 'preview_3d', enabled: false },
+        { featureKey: 'download_3d', enabled: true },
+      ],
+    },
+    't1'
+  );
+  assert.equal(flowFeatureEnabled(cfg, 'download_3d'), false);
 });
 
 test('dependent OJO tools hide when OJO itself is off', () => {

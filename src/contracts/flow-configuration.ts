@@ -1,60 +1,42 @@
-/** Presentation-only client flow configuration. Does not alter production gates, FSM, or order history. */
+/** Presentation-only tenant flow configuration. Consumes the EMPAQUETAR capability catalog. */
 
-export const FLOW_FEATURE_KEYS = [
-  'ojo',
-  'ojo_zone',
-  'ojo_rect',
-  'ojo_ellipse',
-  'ojo_hint',
-  'ojo_scale',
-  'download_2d',
-  'download_3d',
-  'preview_3d',
-  'continue_production',
-  'excel_upload',
-  'messaging',
-  'consumption',
-  'materials',
-  'client_approval',
-] as const;
+import {
+  defaultWorkshopActionOrder,
+  discoverWorkshopCapabilities,
+  isEmpaquetarActionKey,
+  isEmpaquetarCapabilityKey,
+  presentableWorkshopActions,
+  workshopCapabilityDefinition,
+  type EmpaquetarActionKey,
+  type EmpaquetarCapabilityDefinition,
+  type EmpaquetarCapabilityKey,
+} from './empaquetar-capabilities';
 
-export type FlowFeatureKey = (typeof FLOW_FEATURE_KEYS)[number];
+export type FlowFeatureKey = EmpaquetarCapabilityKey;
+export type FlowActionKey = EmpaquetarActionKey;
 
-/** Presentable actions whose visual order the admin can change. */
-export const FLOW_ACTION_KEYS = ['preview', 'download_2d', 'download_3d', 'continue_production'] as const;
-export type FlowActionKey = (typeof FLOW_ACTION_KEYS)[number];
+export const FLOW_FEATURE_KEYS = discoverWorkshopCapabilities().map((row) => row.key);
+
+export const FLOW_ACTION_KEYS = defaultWorkshopActionOrder();
 
 export interface FlowFeatureDefinition {
   key: FlowFeatureKey;
   label: string;
-  /** Features that must also be enabled for this one to appear. */
   requires?: FlowFeatureKey[];
 }
 
-export const FLOW_FEATURE_DEFINITIONS: FlowFeatureDefinition[] = [
-  { key: 'ojo', label: 'OJO — interpretación visual' },
-  { key: 'ojo_zone', label: 'Selección de zona', requires: ['ojo'] },
-  { key: 'ojo_rect', label: 'Marco rectangular', requires: ['ojo', 'ojo_zone'] },
-  { key: 'ojo_ellipse', label: 'Marco elíptico', requires: ['ojo', 'ojo_zone'] },
-  { key: 'ojo_hint', label: 'Solicitud de pista cuando existe ambigüedad', requires: ['ojo'] },
-  { key: 'ojo_scale', label: 'Escalado/preparación automática', requires: ['ojo'] },
-  { key: 'download_2d', label: 'Descarga de muestra 2D' },
-  { key: 'download_3d', label: 'Descarga de muestra 3D' },
-  { key: 'preview_3d', label: 'Previsualización 3D' },
-  { key: 'continue_production', label: 'Continuar a producción' },
-  { key: 'excel_upload', label: 'Carga de Excel' },
-  { key: 'messaging', label: 'Mensajería cliente/taller' },
-  { key: 'consumption', label: 'Información de consumo' },
-  { key: 'materials', label: 'Información de materia prima' },
-  { key: 'client_approval', label: 'Solicitud de aprobación del cliente' },
-];
+export const FLOW_FEATURE_DEFINITIONS: FlowFeatureDefinition[] = discoverWorkshopCapabilities().map((row) => ({
+  key: row.key,
+  label: row.label,
+  requires: row.requires,
+}));
 
-export const FLOW_ACTION_DEFINITIONS: Array<{ key: FlowActionKey; label: string; feature?: FlowFeatureKey }> = [
-  { key: 'preview', label: 'Previsualización' },
-  { key: 'download_2d', label: 'Descargar muestra 2D', feature: 'download_2d' },
-  { key: 'download_3d', label: 'Descargar muestra 3D', feature: 'download_3d' },
-  { key: 'continue_production', label: 'Continuar a producción', feature: 'continue_production' },
-];
+export const FLOW_ACTION_DEFINITIONS: Array<{ key: FlowActionKey; label: string; feature?: FlowFeatureKey }> =
+  presentableWorkshopActions().map((row) => ({
+    key: row.actionKey as FlowActionKey,
+    label: row.label,
+    feature: row.key,
+  }));
 
 export interface FlowFeatureState {
   featureKey: FlowFeatureKey;
@@ -76,26 +58,31 @@ export interface ClientFlowPresentation {
   features: Record<FlowFeatureKey, boolean>;
   actionOrder: FlowActionKey[];
   updatedAt: number;
+  capabilities?: Array<{ key: FlowFeatureKey; enabled: boolean; category: string }>;
 }
 
 function isFeatureKey(raw: string): raw is FlowFeatureKey {
-  return (FLOW_FEATURE_KEYS as readonly string[]).includes(raw);
+  return isEmpaquetarCapabilityKey(raw) && !!workshopCapabilityDefinition(raw);
 }
 
 function isActionKey(raw: string): raw is FlowActionKey {
-  return (FLOW_ACTION_KEYS as readonly string[]).includes(raw);
+  return isEmpaquetarActionKey(raw);
+}
+
+function catalog(): EmpaquetarCapabilityDefinition[] {
+  return discoverWorkshopCapabilities();
 }
 
 export function defaultFlowConfiguration(tenantId: string, now = Date.now()): FlowConfiguration {
   return {
     version: 1,
     tenantId,
-    features: FLOW_FEATURE_KEYS.map((featureKey, i) => ({
-      featureKey,
+    features: catalog().map((row, i) => ({
+      featureKey: row.key,
       enabled: true,
       displayOrder: i + 1,
     })),
-    actionOrder: [...FLOW_ACTION_KEYS],
+    actionOrder: defaultWorkshopActionOrder(),
     updatedAt: now,
   };
 }
@@ -112,14 +99,22 @@ export function parseFlowConfiguration(raw: unknown, tenantId: string, now = Dat
     const rec = item as Record<string, unknown>;
     const key = String(rec.featureKey || rec.key || '');
     if (!isFeatureKey(key)) continue;
+    const def = workshopCapabilityDefinition(key);
+    if (!def) continue;
     const prev = byKey.get(key)!;
+    const requested = rec.enabled !== false;
     byKey.set(key, {
       featureKey: key,
-      enabled: rec.enabled !== false,
+      enabled: def.configurable ? requested : true,
       displayOrder: Number.isFinite(Number(rec.displayOrder)) ? Number(rec.displayOrder) : prev.displayOrder,
     });
   }
-  const features = FLOW_FEATURE_KEYS.map((key) => byKey.get(key)!).sort((a, b) => a.displayOrder - b.displayOrder);
+  const features = catalog()
+    .map((def) => {
+      const state = byKey.get(def.key)!;
+      return { ...state, enabled: def.configurable ? state.enabled : true };
+    })
+    .sort((a, b) => a.displayOrder - b.displayOrder);
   features.forEach((f, i) => {
     f.displayOrder = i + 1;
   });
@@ -132,7 +127,7 @@ export function parseFlowConfiguration(raw: unknown, tenantId: string, now = Dat
     seen.add(key);
     actionOrder.push(key);
   }
-  for (const key of FLOW_ACTION_KEYS) {
+  for (const key of defaultWorkshopActionOrder()) {
     if (!seen.has(key)) actionOrder.push(key);
   }
   return {
@@ -146,10 +141,12 @@ export function parseFlowConfiguration(raw: unknown, tenantId: string, now = Dat
 }
 
 export function flowFeatureEnabled(config: FlowConfiguration, key: FlowFeatureKey): boolean {
-  const def = FLOW_FEATURE_DEFINITIONS.find((d) => d.key === key);
+  const def = workshopCapabilityDefinition(key);
+  if (!def) return false;
   const self = config.features.find((f) => f.featureKey === key);
+  if (!def.configurable) return true;
   if (!self || self.enabled === false) return false;
-  for (const req of def?.requires || []) {
+  for (const req of def.requires || []) {
     if (!flowFeatureEnabled(config, req)) return false;
   }
   return true;
@@ -157,14 +154,19 @@ export function flowFeatureEnabled(config: FlowConfiguration, key: FlowFeatureKe
 
 export function presentClientFlow(config: FlowConfiguration): ClientFlowPresentation {
   const features = {} as Record<FlowFeatureKey, boolean>;
-  for (const key of FLOW_FEATURE_KEYS) {
-    features[key] = flowFeatureEnabled(config, key);
+  for (const def of catalog()) {
+    features[def.key] = flowFeatureEnabled(config, def.key);
   }
   return {
     version: 1,
     features,
     actionOrder: [...config.actionOrder],
     updatedAt: config.updatedAt,
+    capabilities: catalog().map((def) => ({
+      key: def.key,
+      enabled: features[def.key],
+      category: def.category,
+    })),
   };
 }
 
@@ -184,19 +186,13 @@ export function resolveFlowActions(
 ): ResolvedFlowAction[] {
   const preview3dValid = ctx.previewMode === '3D' && !!ctx.sample3dAvailable;
   return presentation.actionOrder.map((key) => {
-    const def = FLOW_ACTION_DEFINITIONS.find((d) => d.key === key)!;
+    const def = FLOW_ACTION_DEFINITIONS.find((d) => d.key === key);
+    const cap = workshopCapabilityDefinition(def?.feature || key);
     let visible = true;
-    if (def.feature && presentation.features[def.feature] === false) visible = false;
-    if (key === 'preview' && presentation.features.preview_3d === false && ctx.previewMode === '3D') {
-      visible = false;
-    }
-    if (key === 'download_3d') {
-      if (!presentation.features.download_3d) visible = false;
-      else if (!preview3dValid) visible = false;
-    }
-    if (key === 'download_2d' && !presentation.features.download_2d) visible = false;
-    if (key === 'continue_production' && !presentation.features.continue_production) visible = false;
-    return { key, label: def.label, visible };
+    if (def?.feature && presentation.features[def.feature] === false) visible = false;
+    if (cap?.runtime?.requiresPreview3dValid && !preview3dValid) visible = false;
+    if (key === 'download_3d' && !preview3dValid) visible = false;
+    return { key, label: def?.label || cap?.label || key, visible };
   });
 }
 
@@ -210,4 +206,46 @@ export function writeFlowConfiguration(
   flow: FlowConfiguration
 ): Record<string, unknown> {
   return { ...(tenantConfig.config || {}), flowConfiguration: flow };
+}
+
+export function resolveTenantCapabilities(
+  flow: FlowConfiguration
+): Array<{
+  key: FlowFeatureKey;
+  label: string;
+  category: string;
+  supported: true;
+  availability: 'supported';
+  configurable: boolean;
+  requires: FlowFeatureKey[];
+  enabled: boolean;
+  displayOrder: number;
+  tenantId: string;
+  actionKey: FlowActionKey | null;
+  commercialTier: null;
+  commercialPrice: null;
+  commercialCategory: string;
+}> {
+  const byKey = new Map(flow.features.map((f) => [f.featureKey, f]));
+  return catalog()
+    .map((def) => {
+      const state = byKey.get(def.key);
+      return {
+        key: def.key,
+        label: def.label,
+        category: def.category,
+        supported: true as const,
+        availability: 'supported' as const,
+        configurable: def.configurable,
+        requires: [...(def.requires || [])],
+        enabled: flowFeatureEnabled(flow, def.key),
+        displayOrder: state?.displayOrder || 0,
+        tenantId: flow.tenantId,
+        actionKey: (def.actionKey as FlowActionKey | undefined) || null,
+        commercialTier: null,
+        commercialPrice: null,
+        commercialCategory: def.commercialCategory,
+      };
+    })
+    .sort((a, b) => a.displayOrder - b.displayOrder);
 }
