@@ -77,13 +77,20 @@ import {
   familyStyleOptions,
   moldeIdForFamily,
 } from '../../contracts/garment-family-style';
-import { actorTypeFromRole } from '../../contracts/trace-domain';
+import { actorTypeFromRole, type DomainEventType } from '../../contracts/trace-domain';
 import {
   assertOrderCanGenerateOutputs,
   isProductionGateError,
 } from '../../contracts/order-production-output';
 import { buildIndustrialOrderArtifacts } from './orderIndustrialExport';
 import { interpretIngestedDesign } from './ojo/VisualInterpreter';
+import { scaleGraphic } from './ora/file-graphics';
+import {
+  parseOjoHints,
+  parseOjoRegion,
+  type OjoDiagnosis,
+  type OjoSession,
+} from '../../contracts/visual-interpreter';
 
 function contactOrThrow(input: Parameters<typeof sanitizeContact>[0]) {
   try {
@@ -473,6 +480,7 @@ export class ClientPortalService {
       configuration: this.presentConfiguration(order),
       viewer: this.viewerFromOrder(order),
       ojo: order.formValues?.ojoInterpretation || null,
+      ojoSession: order.formValues?.ojoSession || null,
       outputs: Array.isArray(order.formValues?.productionOutputs) ? order.formValues.productionOutputs : [],
       timeline: timeline.slice(-20),
     };
@@ -784,32 +792,34 @@ export class ClientPortalService {
         formValues.designDistribution = { ...existing, designFileId: fileId, designKey: fileId };
       }
       try {
-        formValues.ojoInterpretation = interpretIngestedDesign({
+        const diagnosis = interpretIngestedDesign({
           fileId,
           filename,
           mimeType: storedMime,
           bytes,
+          originalFileId: fileId,
         });
+        formValues.ojoInterpretation = diagnosis;
+        formValues.ojoSession = {
+          originalFileId: fileId,
+          hints: [],
+          initial: diagnosis,
+          current: diagnosis,
+          sample2dFileId: fileId,
+          sample3dAvailable: false,
+        } satisfies OjoSession;
       } catch {
         /* OJO is advisory: never block ingest */
       }
       await this.orders.patchCustomerDraft(orderId, { actorId: ctx.userId, role: 'customer' }, { formValues });
-      const ojo = formValues.ojoInterpretation as { productionFitness?: string; humanIntervention?: boolean } | undefined;
+      const ojo = formValues.ojoInterpretation as OjoDiagnosis | undefined;
       if (ojo) {
-        await this.tracer.record({
-          tenantId: ctx.tenantId,
-          entityType: 'artifact',
-          entityId: fileId,
-          eventType: 'OJO_EVALUATED',
-          actorType: 'SYSTEM',
-          actorId: 'ojo',
-          metadata: {
-            orderId,
-            fileId,
-            fitness: ojo.productionFitness,
-            humanIntervention: !!ojo.humanIntervention,
-          },
-          correlationId: orderId,
+        await this.recordOjoTrace(ctx, orderId, fileId, 'OJO_EVALUATED', {
+          fileId,
+          fitness: ojo.productionFitness,
+          action: ojo.action,
+          humanIntervention: !!ojo.humanIntervention,
+          ambiguous: !!ojo.ambiguous,
         });
       }
     }
@@ -1909,6 +1919,216 @@ export class ClientPortalService {
     if (idx >= 0) list[idx] = { ...list[idx], ...next, style: next.style || list[idx].style };
     else list.push({ ...next, style: next.style || defaultFamilyStyle(next.garmentType) });
     return list;
+  }
+
+  async interpretOjo(
+    ctx: AuthContext,
+    orderId: string,
+    body: { fileId?: string; region?: unknown; hints?: unknown }
+  ) {
+    await this.requireCustomer(ctx);
+    const order = await this.orders.getOrderForCustomer(orderId, ctx.tenantId, ctx.userId);
+    const fv = order.formValues || {};
+    const originalFileId = String(body.fileId || fv.designFileId || '').trim();
+    if (!originalFileId) throw new RequestInvalidError('DESIGN_REQUIRED');
+    const original = await this.store.getOrderFile(originalFileId);
+    if (!original || original.tenantId !== ctx.tenantId || original.orderId !== orderId) {
+      throw new AccessDeniedError();
+    }
+    const bytes = await this.store.readBlob(original.id);
+    if (!bytes?.length) throw new RequestInvalidError('EMPTY_FILE');
+    const region = parseOjoRegion(body.region);
+    const hints = parseOjoHints(body.hints);
+    const tpu = fv.tpuConfig as TPUOrderConfig | undefined;
+    const diagnosis = interpretIngestedDesign({
+      fileId: originalFileId,
+      originalFileId,
+      filename: original.filename,
+      mimeType: original.mimeType,
+      bytes,
+      region,
+      hints,
+      orderContext: {
+        orderId,
+        garmentType: String(fv.garmentType || ''),
+        tpuWidthMm: tpu?.width_mm,
+        tpuHeightMm: tpu?.height_mm,
+      },
+    });
+    const prev = (fv.ojoSession || {}) as OjoSession;
+    const session: OjoSession = {
+      originalFileId,
+      region,
+      hints,
+      initial: prev.initial || diagnosis,
+      current: diagnosis,
+      sample2dFileId: originalFileId,
+      sample3dAvailable: false,
+    };
+    await this.recordOjoTrace(ctx, orderId, originalFileId, region ? 'OJO_REGION_SELECTED' : 'OJO_EVALUATED', {
+      fileId: originalFileId,
+      region: region || null,
+      hints,
+      action: diagnosis.action,
+      ambiguous: diagnosis.ambiguous,
+    });
+    if (hints.length) {
+      await this.recordOjoTrace(ctx, orderId, originalFileId, 'OJO_HINT_APPLIED', {
+        fileId: originalFileId,
+        hints,
+        action: diagnosis.action,
+      });
+    }
+    if (!diagnosis.ambiguous && diagnosis.action === 'ESCALAR_PREPARAR' && this.canScalePng(original.filename, original.mimeType)) {
+      const targetW = Math.max(1, Math.round(diagnosis.size.targetWidthPx || 1500));
+      const targetH = Math.max(1, Math.round(diagnosis.size.targetHeightPx || 1500));
+      const scaled = scaleGraphic({
+        filename: original.filename,
+        mimeType: original.mimeType,
+        bytes,
+        target: { widthPx: targetW, heightPx: targetH },
+      });
+      if (scaled.executable && scaled.bytes.length) {
+        const derived = await this.saveOjoDerivedFile(ctx, order, {
+          filename: scaled.filename.startsWith('muestra-') ? scaled.filename : `muestra-2d-${scaled.filename}`,
+          mimeType: scaled.mimeType,
+          bytes: scaled.bytes,
+        });
+        const post = interpretIngestedDesign({
+          fileId: derived.id,
+          originalFileId,
+          filename: derived.filename,
+          mimeType: derived.mimeType,
+          bytes: scaled.bytes,
+          region,
+          hints,
+          orderContext: {
+            orderId,
+            garmentType: String(fv.garmentType || ''),
+            tpuWidthMm: tpu?.width_mm,
+            tpuHeightMm: tpu?.height_mm,
+          },
+        });
+        session.transformation = {
+          kind: 'SCALE',
+          engine: 'scaleGraphic',
+          derivedFileId: derived.id,
+          performedAt: Date.now(),
+          targetWidthPx: targetW,
+          targetHeightPx: targetH,
+        };
+        session.post = post;
+        session.current = post;
+        session.sample2dFileId = derived.id;
+        await this.recordOjoTrace(ctx, orderId, derived.id, 'OJO_TRANSFORMED', {
+          originalFileId,
+          derivedFileId: derived.id,
+          engine: 'scaleGraphic',
+          targetWidthPx: targetW,
+          targetHeightPx: targetH,
+        });
+        await this.recordOjoTrace(ctx, orderId, derived.id, 'OJO_REANALYZED', {
+          originalFileId,
+          derivedFileId: derived.id,
+          action: post.action,
+          fitness: post.productionFitness,
+        });
+      }
+    }
+    const formValues: Record<string, unknown> = { ...fv };
+    const viewer = this.viewerFromOrder({ ...order, formValues: { ...formValues, ojoInterpretation: session.current } });
+    session.sample3dAvailable = !!viewer.ready;
+    if (session.sample3dAvailable) {
+      const sample3d = await this.saveOjoDerivedFile(ctx, order, {
+        filename: 'muestra-3d.json',
+        mimeType: 'application/json',
+        bytes: Buffer.from(
+          JSON.stringify(
+            {
+              version: 'v1',
+              kind: 'muestra-3d',
+              production: false,
+              originalFileId,
+              region: region || null,
+              hints,
+              layer: session.current.layer,
+              viewer,
+            },
+            null,
+            2
+          ),
+          'utf8'
+        ),
+      });
+      session.sample3dFileId = sample3d.id;
+    }
+    formValues.ojoInterpretation = session.current;
+    formValues.ojoSession = session;
+    await this.orders.patchCustomerDraft(orderId, { actorId: ctx.userId, role: 'customer' }, { formValues });
+    const updated = (await this.orders.getOrder(orderId, 'admin')) || order;
+    return {
+      ...this.listItem(updated, ctx.lang),
+      ojo: session.current,
+      ojoSession: session,
+      viewer: this.viewerFromOrder(updated),
+      sample2d: session.sample2dFileId
+        ? { fileId: session.sample2dFileId, available: true }
+        : { fileId: originalFileId, available: this.isDesignUpload(original.filename, original.mimeType) },
+      sample3d: {
+        fileId: session.sample3dFileId || null,
+        available: session.sample3dAvailable,
+      },
+      continueToProduction: true,
+    };
+  }
+
+  private canScalePng(filename: string, mimeType: string): boolean {
+    const name = filename.toLowerCase();
+    const mime = mimeType.toLowerCase();
+    return mime.includes('png') || name.endsWith('.png');
+  }
+
+  private async saveOjoDerivedFile(
+    ctx: AuthContext,
+    order: PersistedOrder,
+    input: { filename: string; mimeType: string; bytes: Buffer }
+  ) {
+    const fileId = randomUUID();
+    const storageKey = await this.store.writeBlob(fileId, input.bytes);
+    const uploadedAt = Date.now();
+    await this.store.saveOrderFile({
+      id: fileId,
+      tenantId: ctx.tenantId,
+      orderId: order.orderId,
+      customerId: ctx.userId,
+      filename: input.filename,
+      storageKey,
+      mimeType: input.mimeType,
+      sizeBytes: input.bytes.length,
+      status: 'PENDING',
+      uploadedAt,
+      conversionStatus: 'NOT_REQUIRED',
+    });
+    return { id: fileId, filename: input.filename, mimeType: input.mimeType };
+  }
+
+  private async recordOjoTrace(
+    ctx: AuthContext,
+    orderId: string,
+    entityId: string,
+    eventType: DomainEventType,
+    metadata: Record<string, unknown>
+  ) {
+    await this.tracer.record({
+      tenantId: ctx.tenantId,
+      entityType: 'artifact',
+      entityId,
+      eventType,
+      actorType: 'SYSTEM',
+      actorId: 'ojo',
+      metadata: { orderId, ...metadata, originalPreserved: true },
+      correlationId: orderId,
+    });
   }
 
   private isDesignUpload(filename: string, mimeType: string): boolean {

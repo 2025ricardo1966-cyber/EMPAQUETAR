@@ -353,7 +353,23 @@
     "fabric": "Tela",
     "color_primary": "Color principal",
     "understood": "ESTO ES LO QUE ENTENDÍ",
-    "pay_checkout": "Pagar saldo"
+    "pay_checkout": "Pagar saldo",
+    "ojo_mark": "MARQUE LA ZONA QUE DESEA INTERPRETAR",
+    "ojo_rect": "Marco rectangular",
+    "ojo_ellipse": "Marco elíptico",
+    "ojo_hint_prompt": "INDIQUE QUÉ ELEMENTO DESEA INTERPRETAR",
+    "ojo_hint_number": "Número",
+    "ojo_hint_name": "Nombre",
+    "ojo_hint_font": "Fuente",
+    "ojo_hint_design": "Diseño",
+    "ojo_ready": "LISTO",
+    "ojo_interpret": "Interpretar zona",
+    "ojo_action_apto": "APTO",
+    "ojo_action_scale": "ESCALAR/PREPARAR",
+    "ojo_action_human": "INTERVENCIÓN HUMANA",
+    "ojo_download_2d": "DESCARGAR MUESTRA 2D",
+    "ojo_download_3d": "DESCARGAR MUESTRA 3D",
+    "ojo_continue_production": "CONTINUAR A PRODUCCIÓN"
   },
   "messages": {
     "categories": {

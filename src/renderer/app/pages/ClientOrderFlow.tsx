@@ -4,6 +4,10 @@ import { useAuth } from '../providers/AuthProvider';
 import { useI18n } from '../providers/I18nProvider';
 import { useTenant } from '../providers/TenantProvider';
 import { ClientOrderPreview3D } from './ClientOrderPreview3D';
+import { OjoZoneMark } from './OjoZoneMark';
+import { downloadBase64File } from '../../foundation/download';
+import type { OjoHint, OjoRegion } from '../../../contracts/visual-interpreter';
+import { ojoActionLabel } from '../../../contracts/visual-interpreter';
 
 type CatalogItem = {
   itemId: string;
@@ -85,7 +89,23 @@ type TpuAdmin = {
 };
 
 type FamilyStyle = { collarId?: string; sleeveId?: string; fabricId?: string; colors?: { primary?: string } };
-type ConfigStep = 'garment' | 'sizes' | 'style' | 'roster' | 'tpu' | 'laser' | 'design' | 'preview' | 'pay';
+type ConfigStep = 'garment' | 'sizes' | 'style' | 'roster' | 'tpu' | 'laser' | 'design' | 'ojo' | 'preview' | 'pay';
+type OjoView = {
+  action?: string;
+  ambiguous?: boolean;
+  content?: { summary?: string; elements?: string[] };
+  size?: { currentWidthPx?: number; currentHeightPx?: number; targetWidthPx?: number; targetHeightPx?: number; needsScale?: boolean };
+  quality?: { score?: string };
+  risk?: string[];
+  humanIntervention?: boolean;
+};
+type OjoSessionView = {
+  originalFileId?: string;
+  sample2dFileId?: string;
+  sample3dFileId?: string;
+  sample3dAvailable?: boolean;
+  transformation?: { derivedFileId?: string };
+};
 
 function fileToBase64(file: File): Promise<{ name: string; mime: string; content: string; url: string }> {
   return new Promise((resolve, reject) => {
@@ -115,6 +135,12 @@ export const ClientOrderFlow: React.FC<{
   const [quote, setQuote] = useState<Quote | null>(null);
   const [orderId, setOrderId] = useState('');
   const [designUrl, setDesignUrl] = useState('');
+  const [designFileId, setDesignFileId] = useState('');
+  const [ojoRegion, setOjoRegion] = useState<OjoRegion | null>(null);
+  const [ojoHints, setOjoHints] = useState<OjoHint[]>([]);
+  const [ojo, setOjo] = useState<OjoView | null>(null);
+  const [ojoSession, setOjoSession] = useState<OjoSessionView | null>(null);
+  const [ojoNeedsHint, setOjoNeedsHint] = useState(false);
   const [approved, setApproved] = useState<boolean | null>(null);
   const [sendConfirm, setSendConfirm] = useState(false);
   const [payment, setPayment] = useState<Payment | null>(null);
@@ -206,6 +232,48 @@ export const ClientOrderFlow: React.FC<{
     if (data.total != null) {
       setQuote((prev) => ({ ...(prev || {}), total: data.total, subtotal: data.total, lines: data.consumption || prev?.lines }));
     }
+  };
+
+  const runOjo = (payload: { region?: OjoRegion | null; hints?: OjoHint[] }) => {
+    if (!orderId) return;
+    void api
+      .post(`/client/orders/${orderId}/ojo`, {
+        fileId: designFileId || undefined,
+        region: payload.region || undefined,
+        hints: payload.hints || [],
+      })
+      .then((res) => {
+        const data = res.data as {
+          ojo?: OjoView;
+          ojoSession?: OjoSessionView;
+          viewer?: ViewerParams;
+          sample3d?: { available?: boolean; fileId?: string | null };
+        };
+        setOjo(data.ojo || null);
+        setOjoSession(data.ojoSession || null);
+        setOjoNeedsHint(!!data.ojo?.ambiguous);
+        if (data.viewer) setViewer(data.viewer);
+      })
+      .catch((err) => setNotice(t(apiNoticeKey(err))));
+  };
+
+  const downloadOjoSample = (kind: '2d' | '3d') => {
+    if (!orderId) return;
+    const fileId = kind === '3d' ? ojoSession?.sample3dFileId : ojoSession?.sample2dFileId || designFileId;
+    if (!fileId) return;
+    if (kind === '3d' && !ojoSession?.sample3dAvailable) return;
+    void api
+      .get(`/client/orders/${orderId}/files/${fileId}`)
+      .then((res) => {
+        const data = res.data as { filename?: string; mimeType?: string; contentBase64?: string };
+        if (!data.contentBase64) return;
+        downloadBase64File(data.filename || (kind === '3d' ? 'muestra-3d.json' : 'muestra-2d.png'), data.mimeType || 'application/octet-stream', data.contentBase64);
+      })
+      .catch((err) => setNotice(t(apiNoticeKey(err))));
+  };
+
+  const toggleHint = (hint: OjoHint) => {
+    setOjoHints((prev) => (prev.includes(hint) ? prev.filter((h) => h !== hint) : [...prev, hint]));
   };
 
   const resetWizard = () => {
@@ -765,7 +833,7 @@ export const ClientOrderFlow: React.FC<{
             </div>
           ) : null}
 
-          {configStep === 'design' || configStep === 'preview' || configStep === 'pay' ? (
+          {configStep === 'design' || configStep === 'ojo' || configStep === 'preview' || configStep === 'pay' ? (
             <>
               <h3>{t('flow.upload_design')} — {t('flow.one_design')}</h3>
               <input
@@ -777,17 +845,129 @@ export const ClientOrderFlow: React.FC<{
                   void fileToBase64(file)
                     .then((payload) => {
                       setDesignUrl(payload.url);
+                      setOjo(null);
+                      setOjoSession(null);
+                      setOjoRegion(null);
+                      setOjoHints([]);
+                      setOjoNeedsHint(false);
                       return api.post(`/client/orders/${orderId}/files`, {
                         filename: payload.name,
                         mimeType: payload.mime,
                         contentBase64: payload.content,
                       });
                     })
-                    .then(() => setConfigStep('preview'))
+                    .then((res) => {
+                      const data = res.data as { id?: string };
+                      if (data.id) setDesignFileId(data.id);
+                      setConfigStep('ojo');
+                    })
                     .catch((err) => setNotice(t(apiNoticeKey(err))));
                 }}
               />
             </>
+          ) : null}
+
+          {configStep === 'ojo' && designUrl ? (
+            <div data-step="ojo">
+              <OjoZoneMark
+                imageUrl={designUrl}
+                value={ojoRegion}
+                onChange={(region) => {
+                  setOjoRegion(region);
+                  setOjoNeedsHint(false);
+                }}
+              />
+              <button
+                type="button"
+                data-ojo="interpret"
+                disabled={!ojoRegion}
+                onClick={() => runOjo({ region: ojoRegion, hints: [] })}
+              >
+                {t('flow.ojo_interpret')}
+              </button>
+              {ojoNeedsHint ? (
+                <div data-ojo="hints">
+                  <p data-ojo="hint-prompt">INDIQUE QUÉ ELEMENTO DESEA INTERPRETAR</p>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={ojoHints.includes('NUMERO')}
+                      onChange={() => toggleHint('NUMERO')}
+                    />
+                    Número
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={ojoHints.includes('NOMBRE')}
+                      onChange={() => toggleHint('NOMBRE')}
+                    />
+                    Nombre
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={ojoHints.includes('FUENTE')}
+                      onChange={() => toggleHint('FUENTE')}
+                    />
+                    Fuente
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={ojoHints.includes('DISENO')}
+                      onChange={() => toggleHint('DISENO')}
+                    />
+                    Diseño
+                  </label>
+                  <button
+                    type="button"
+                    data-ojo="listo"
+                    onClick={() => runOjo({ region: ojoRegion, hints: ojoHints })}
+                  >
+                    LISTO
+                  </button>
+                </div>
+              ) : null}
+              {ojo && !ojoNeedsHint ? (
+                <div data-ojo="result">
+                  <p data-ojo-action={ojo.action}>
+                    {ojoActionLabel((ojo.action as 'APTO' | 'ESCALAR_PREPARAR' | 'INTERVENCION_HUMANA') || 'APTO')}
+                  </p>
+                  {ojo.content?.summary ? <p data-ojo="content">{ojo.content.summary}</p> : null}
+                  {ojo.size ? (
+                    <p data-ojo="scale">
+                      {ojo.size.currentWidthPx}×{ojo.size.currentHeightPx}
+                      {ojo.size.targetWidthPx ? ` → ${ojo.size.targetWidthPx}×${ojo.size.targetHeightPx}` : ''}
+                    </p>
+                  ) : null}
+                  <div data-ojo="actions">
+                    <button
+                      type="button"
+                      data-ojo="download-2d"
+                      onClick={() => downloadOjoSample('2d')}
+                    >
+                      DESCARGAR MUESTRA 2D
+                    </button>
+                    <button
+                      type="button"
+                      data-ojo="download-3d"
+                      disabled={!ojoSession?.sample3dAvailable}
+                      onClick={() => downloadOjoSample('3d')}
+                    >
+                      DESCARGAR MUESTRA 3D
+                    </button>
+                    <button
+                      type="button"
+                      data-ojo="continue-production"
+                      onClick={() => setConfigStep('preview')}
+                    >
+                      CONTINUAR A PRODUCCIÓN
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           {configStep === 'preview' || configStep === 'pay' ? (
