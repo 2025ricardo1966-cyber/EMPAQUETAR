@@ -209,9 +209,13 @@ export class ClientPortalService {
       postalCode: input.postalCode,
       address: input.address,
     });
-    const preferredLanguage =
-      (input.preferredLanguage ? normalizeLanguageTag(input.preferredLanguage) : undefined) ||
-      resolveConfiguredLanguage(config);
+    let preferredLanguage: string | undefined;
+    try {
+      preferredLanguage = input.preferredLanguage ? normalizeLanguageTag(input.preferredLanguage) : undefined;
+    } catch {
+      preferredLanguage = undefined;
+    }
+    preferredLanguage = preferredLanguage || resolveConfiguredLanguage(config);
     const existing = await this.store.getUserByLogin(input.tenantId, email);
     if (existing) throw new RequestInvalidError('LOGIN_TAKEN');
     const now = Date.now();

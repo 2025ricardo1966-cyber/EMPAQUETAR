@@ -7,3 +7,12 @@ healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
+
+# Mount a Railway volume at /data in the dashboard (PGlite + blobs + jwt.secret).
+# Railway injects PORT. Do not hardcode 8787.
+
+[variables]
+MASCAYL_ENV = "production"
+MASCAYL_DATA_DIR = "/data"
+MASCAYL_CONTROL_PLANE_HOST = "0.0.0.0"
+

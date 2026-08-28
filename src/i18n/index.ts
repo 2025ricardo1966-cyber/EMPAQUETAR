@@ -33,8 +33,10 @@ export function normalizeLanguage(raw?: string | null): string {
 export function parseAcceptLanguage(header?: string | null): string | undefined {
   if (!header) return undefined;
   const first = header.split(',')[0]?.trim();
-  if (!first) return undefined;
-  return normalizeLanguage(first);
+  if (!first || first === '*') return undefined;
+  const code = normalizeLanguage(first);
+  if (!/^[a-z]{2,8}$/.test(code)) return undefined;
+  return code;
 }
 
 export function detectLanguage(input: {
