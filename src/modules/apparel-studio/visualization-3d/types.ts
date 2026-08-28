@@ -35,7 +35,7 @@ export interface Garment3DSceneConfig {
   view: CameraViewPreset;
   autoRotate: boolean;
   zoom: number;
-  /** OJO layer hint. V1 stores metadata; texture application is a later step. */
+  /** OJO layer hint consumed by the viewer — not re-interpreted here. */
   designLayer?: {
     zone: string;
     scale: number;
@@ -43,6 +43,8 @@ export interface Garment3DSceneConfig {
     proportion: { width: number; height: number; ratio: number } | null;
     designType: string;
   } | null;
+  /** Current OJO artwork (data URL or blob URL). Applied as texture when present. */
+  designUrl?: string;
 }
 
 export interface Garment3DSceneConfigInput {
@@ -50,6 +52,13 @@ export interface Garment3DSceneConfigInput {
   piezas: MedidasPiezaResueltas[];
   fabricId?: FabricId;
 }
+
+/** EMPAQUETAR validation preview: no cloth sim, wrinkles, wind, or cinematic motion. */
+export const VALIDATION_SIMULATION: Garment3DSimulationOptions = {
+  enabled: false,
+  folds: false,
+  movement: false,
+};
 
 export const DEFAULT_SIMULATION: Garment3DSimulationOptions = {
   enabled: true,

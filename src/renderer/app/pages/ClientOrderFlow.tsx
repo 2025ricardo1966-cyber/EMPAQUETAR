@@ -3,7 +3,7 @@ import { apiNoticeKey } from '../../foundation/api-notice';
 import { useAuth } from '../providers/AuthProvider';
 import { useI18n } from '../providers/I18nProvider';
 import { useTenant } from '../providers/TenantProvider';
-import { ClientOrderPreview3D } from './ClientOrderPreview3D';
+import { ClientOrderPreviewAdaptive } from './ClientOrderPreview3D';
 import { OjoZoneMark } from './OjoZoneMark';
 import { downloadBase64File } from '../../foundation/download';
 import type { OjoHint, OjoRegion } from '../../../contracts/visual-interpreter';
@@ -18,6 +18,10 @@ type CatalogItem = {
   unit: string;
   currency?: string;
   stockEnabled?: boolean;
+  productKey?: string;
+  previewMode?: '2D' | '3D';
+  family?: string;
+  moldId?: string;
 };
 
 type Quote = {
@@ -79,6 +83,16 @@ type ViewerParams = {
   talle?: string;
   categoria?: 'adulto' | 'infantil';
   fabricId?: string;
+  previewMode?: '2D' | '3D';
+  productKey?: string;
+  appliedDesignFileId?: string;
+  designLayer?: {
+    zone?: string;
+    scale?: number;
+    orientation?: string;
+    proportion?: { width: number; height: number; ratio: number } | null;
+    designType?: string;
+  } | null;
 };
 
 type TpuAdmin = {
@@ -216,6 +230,8 @@ export const ClientOrderFlow: React.FC<{
     total?: number;
     consumption?: Quote['lines'];
     configuration?: {
+      previewMode?: '2D' | '3D';
+      needsApparelConfig?: boolean;
       distribution?: {
         totalUnits?: number;
         recordCount?: number;
@@ -223,6 +239,7 @@ export const ClientOrderFlow: React.FC<{
         families?: Array<{ garmentType: string; units: number; bySize?: Record<string, number> }>;
       };
     };
+    ojoSession?: OjoSessionView;
   }) => {
     if (data.payment) setPayment(data.payment);
     if (data.flowStatusLabel) setFlowStatus(data.flowStatusLabel);
@@ -253,12 +270,26 @@ export const ClientOrderFlow: React.FC<{
         setOjoSession(data.ojoSession || null);
         setOjoNeedsHint(!!data.ojo?.ambiguous);
         if (data.viewer) setViewer(data.viewer);
+        const sampleId = data.ojoSession?.sample2dFileId;
+        if (sampleId && orderId) {
+          void api
+            .get(`/client/orders/${orderId}/files/${sampleId}`)
+            .then((fileRes) => {
+              const file = fileRes.data as { mimeType?: string; contentBase64?: string };
+              if (!file.contentBase64) return;
+              setDesignUrl(`data:${file.mimeType || 'image/png'};base64,${file.contentBase64}`);
+            })
+            .catch(() => undefined);
+        }
       })
       .catch((err) => setNotice(t(apiNoticeKey(err))));
   };
 
   const downloadOjoSample = (kind: '2d' | '3d') => {
     if (!orderId) return;
+    const mode = viewer?.previewMode === '3D' ? '3D' : '2D';
+    if (kind === '3d' && mode !== '3D') return;
+    if (kind === '2d' && mode === '3D' && !ojoSession?.sample2dFileId && !designFileId) return;
     const fileId = kind === '3d' ? ojoSession?.sample3dFileId : ojoSession?.sample2dFileId || designFileId;
     if (!fileId) return;
     if (kind === '3d' && !ojoSession?.sample3dAvailable) return;
@@ -321,12 +352,32 @@ export const ClientOrderFlow: React.FC<{
           flowStatusLabel?: string;
           commercialTerms?: CommercialTerms;
           viewer?: ViewerParams;
+          configuration?: { previewMode?: '2D' | '3D'; needsApparelConfig?: boolean };
         };
         const id = data.orderId || data.id || '';
         setOrderId(id);
         setCreatedOrders((prev) => [...prev, { id, name: projectName.trim() }]);
         applyOrderView(data);
-        setConfigStep('garment');
+        const mode = data.viewer?.previewMode || data.configuration?.previewMode || picked?.previewMode || '2D';
+        const apparel = data.configuration?.needsApparelConfig === true || (mode === '3D' && picked?.family !== 'CUBREMALETAS');
+        if (apparel) {
+          const types = picked?.family === 'SHORT' || picked?.family === 'CALZA' || picked?.family === 'BERMUDA' ? ['SHORT'] : ['CAMISETA'];
+          setGarmentTypes(types);
+          setConfigStep('sizes');
+          void api
+            .patch(`/client/orders/${id}/configuration`, { garmentTypes: types })
+            .then((resCfg) => {
+              applyOrderView(resCfg.data as { viewer?: ViewerParams });
+              return api.get('/client/size-tables');
+            })
+            .then((resTables) => {
+              const tableData = resTables.data as { tables?: SizeTable[] };
+              setSizeTables(tableData.tables || []);
+            })
+            .catch((err) => setNotice(t(apiNoticeKey(err))));
+        } else {
+          setConfigStep('design');
+        }
         onCreated();
       })
       .catch((err) => setNotice(t(apiNoticeKey(err))));
@@ -381,6 +432,7 @@ export const ClientOrderFlow: React.FC<{
                   }}
                 >
                   {item.name}
+                  {item.previewMode ? ` · ${item.previewMode}` : ''}
                 </button>
               ))
             : null}
@@ -392,7 +444,7 @@ export const ClientOrderFlow: React.FC<{
             createOrder();
           }}
         >
-          <p>{picked.name}</p>
+          <p>{picked.name}{picked.previewMode ? ` · ${picked.previewMode}` : ''}</p>
           <label>
             {t('flow.project_name')}
             <input
@@ -952,7 +1004,7 @@ export const ClientOrderFlow: React.FC<{
                     <button
                       type="button"
                       data-ojo="download-3d"
-                      disabled={!ojoSession?.sample3dAvailable}
+                      disabled={(viewer?.previewMode === '3D' ? '3D' : '2D') !== '3D' || !ojoSession?.sample3dAvailable}
                       onClick={() => downloadOjoSample('3d')}
                     >
                       DESCARGAR MUESTRA 3D
@@ -973,7 +1025,7 @@ export const ClientOrderFlow: React.FC<{
           {configStep === 'preview' || configStep === 'pay' ? (
             <>
               <h3>{t('flow.preview')}</h3>
-              <ClientOrderPreview3D designUrl={designUrl || undefined} viewer={viewer} />
+              <ClientOrderPreviewAdaptive designUrl={designUrl || undefined} viewer={viewer} />
               <h3>{t('flow.approve_q')}</h3>
               <button
                 type="button"

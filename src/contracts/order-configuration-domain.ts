@@ -100,6 +100,8 @@ export interface Preview3DDecision {
   at: number;
   actorId: string;
   note?: string;
+  visualVersion?: string;
+  previewMode?: '2D' | '3D';
 }
 
 export interface ViewerOrderParams {
@@ -116,6 +118,9 @@ export interface ViewerOrderParams {
   sleeveId?: OrderSleeveId;
   colors?: FamilyStyleConfig['colors'];
   designLayer?: import('./visual-interpreter').OjoLayerHint | null;
+  previewMode?: '2D' | '3D';
+  productKey?: string;
+  appliedDesignFileId?: string;
 }
 
 export const LASER_MATERIAL_ID = 'laser:registro';
@@ -201,31 +206,40 @@ export function orderToViewerParams(input: {
   sleeveId?: string;
   fabricId?: string;
   colors?: FamilyStyleConfig['colors'];
+  moldId?: string;
+  previewMode?: '2D' | '3D';
+  productKey?: string;
+  appliedDesignFileId?: string;
 }): ViewerOrderParams {
+  const previewMode: '2D' | '3D' = input.previewMode === '3D' ? '3D' : '2D';
   const pending: string[] = [];
   const garmentType = isGarmentType(String(input.garmentType || '')) ? (input.garmentType as GarmentType) : undefined;
-  const moldId = moldIdForGarment(garmentType);
-  if (!moldId) pending.push('garmentType');
+  const moldId = String(input.moldId || '').trim() || moldIdForGarment(garmentType);
   const label = String(input.sizeLabel || '').trim().toUpperCase();
-  const talle = MOLDE_TALLE.has(label) ? label : undefined;
-  if (!talle) pending.push('talle');
+  const talle = MOLDE_TALLE.has(label) ? label : previewMode === '3D' && moldId ? 'M' : undefined;
   const categoria = talle && talle.startsWith('T') ? 'infantil' : 'adulto';
   const tpuReady = Number(input.tpu?.width_mm) > 0 && Number(input.tpu?.height_mm) > 0;
-  if (!tpuReady) pending.push('tpu');
+  if (previewMode === '3D') {
+    if (!moldId) pending.push('garmentType');
+  }
   const fabricId = (input.fabricId as OrderFabricId | undefined) || fabricIdFromMaterial(input.materialName);
+  const applied = String(input.appliedDesignFileId || input.designUrl || '').trim() || undefined;
   return {
-    ready: pending.length === 0,
+    ready: previewMode === '2D' ? true : pending.length === 0,
     pendingReasons: pending,
     moldId,
     talle,
     categoria,
     fabricId,
-    designUrl: input.designUrl,
+    designUrl: applied,
     tpu: tpuReady ? { width_mm: Number(input.tpu?.width_mm), height_mm: Number(input.tpu?.height_mm) } : undefined,
     garmentType,
     collarId: input.collarId as OrderCollarId | undefined,
     sleeveId: input.sleeveId as OrderSleeveId | undefined,
     colors: input.colors,
+    previewMode,
+    productKey: input.productKey,
+    appliedDesignFileId: applied,
   };
 }
 

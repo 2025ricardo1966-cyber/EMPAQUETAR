@@ -21,6 +21,7 @@ interface Garment3DControlsProps {
   onLightingChange: (lighting: LightingPresetId) => void;
   onSimulationChange: (simulation: Garment3DSimulationOptions) => void;
   onAutoRotateChange: (autoRotate: boolean) => void;
+  validationMode?: boolean;
 }
 
 function Toggle({
@@ -56,6 +57,7 @@ export const Garment3DControls: React.FC<Garment3DControlsProps> = ({
   onLightingChange,
   onSimulationChange,
   onAutoRotateChange,
+  validationMode = false,
 }) => {
   const patchSim = (partial: Partial<Garment3DSimulationOptions>) =>
     onSimulationChange({ ...simulation, ...partial });
@@ -112,6 +114,7 @@ export const Garment3DControls: React.FC<Garment3DControlsProps> = ({
         </label>
       </div>
 
+      {!validationMode ? (
       <div>
         <p className="mb-2 text-[11px] uppercase tracking-wider text-ui-muted">
           Simulación de tela
@@ -142,6 +145,9 @@ export const Garment3DControls: React.FC<Garment3DControlsProps> = ({
           Arrastrá con el mouse para rotar · rueda para zoom · caída y pliegues según la tela activa
         </p>
       </div>
+      ) : (
+        <p className="text-[10px] text-ui-subtle">Arrastrá para rotar · rueda o control de zoom.</p>
+      )}
     </div>
   );
 };

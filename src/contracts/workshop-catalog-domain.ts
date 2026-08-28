@@ -27,6 +27,10 @@ export interface WorkshopCatalogItem {
   stockEnabled: boolean;
   createdAt: number;
   updatedAt: number;
+  productKey?: string;
+  previewMode?: '2D' | '3D';
+  family?: string;
+  moldId?: string;
 }
 
 export interface WorkshopCatalogSnapshotLine {
@@ -53,7 +57,7 @@ export const DEFAULT_WORKSHOP_LIBRARY: WorkshopLibrarySeed[] = [
   { key: 'tpu', category: 'TPU', name: 'TPU', unit: 'M', description: 'Film TPU' },
   { key: 'dtf', category: 'DTF_TEXTIL', name: 'DTF', unit: 'M2', description: 'DTF textil' },
   { key: 'dtf-uv', category: 'UV_DTF', name: 'DTF UV', unit: 'M2', description: 'DTF UV' },
-  { key: 'set-deportivo', category: 'SUBLIMACION', name: 'Set deportivo', unit: 'UNIDAD', description: 'Set deportivo' },
+  { key: 'set-deportivo', category: 'SUBLIMACION', name: 'Conjunto deportivo', unit: 'UNIDAD', description: 'Conjunto deportivo' },
   { key: 'cordura', category: 'OTRO', name: 'Cordura', unit: 'M', description: 'Cordura' },
   { key: 'bordado', category: 'BORDADO', name: 'Bordado', unit: 'UNIDAD', description: 'Bordado' },
   { key: 'tropical-mecanico', category: 'SUBLIMACION', name: 'Tropical mecánico', unit: 'M', description: 'Tropical mecánico' },

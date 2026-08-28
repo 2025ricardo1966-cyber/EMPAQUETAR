@@ -3,9 +3,12 @@ import type { Garment3DMeasurements } from '../types';
 
 const LOWER_MOLDES: MoldeId[] = [
   'short',
+  'short-futbol',
+  'short-ciclismo',
   'bermuda',
   'calza-corta',
   'calza-larga',
+  'calza-ciclismo',
   'pantalon-deportivo',
 ];
 
@@ -93,7 +96,11 @@ export function extractGarment3DMeasurements(
 
   const sleeveless =
     moldId === 'musculosa' ||
+    moldId === 'musculosa-deportiva' ||
+    moldId === 'musculosa-gimnasio' ||
+    moldId === 'pechera-deportiva' ||
     moldId === 'chaleco' ||
+    moldId === 'cubremaletas' ||
     !hasPiece(piezas, [bySlot('manga-izquierda'), byId('manga-izq'), byKind('manga-')]);
 
   const hasHood = moldId === 'buzo' || hasPiece(piezas, [byId('capucha'), byKind('capucha')]);
