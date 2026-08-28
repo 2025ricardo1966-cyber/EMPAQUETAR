@@ -196,6 +196,7 @@ async function handle(kernel: ControlPlaneKernel, req: http.IncomingMessage, res
       PRODUCTION_NOT_APPROVED: 'errors.production_not_approved',
       DESIGN_REQUIRED: 'errors.design_required',
       PREVIEW_PENDING: 'errors.preview_pending',
+      OUTPUT_EMPTY: 'errors.output_empty',
       NOT_CDR: 'errors.not_cdr',
       ORA_INVALID_DIMENSION: 'errors.ora_invalid_dimension',
       ORA_PATTERN_NOT_FOUND: 'errors.ora_pattern_not_found',

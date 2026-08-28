@@ -100,7 +100,8 @@ export type ClientPortalEventType =
   | 'ROSTER_APPROVED'
   | 'CONFIGURATION_CHANGED'
   | 'PRODUCTION_APPROVED'
-  | 'OUTPUT_GENERATED';
+  | 'OUTPUT_GENERATED'
+  | 'OUTPUT_FAILED';
 
 export type DomainEventType =
   | OrderDomainEventType
@@ -243,6 +244,7 @@ export const CUSTOMER_VISIBLE_EVENT_TYPES = new Set<string>([
   'CONFIGURATION_CHANGED',
   'PRODUCTION_APPROVED',
   'OUTPUT_GENERATED',
+  'OUTPUT_FAILED',
 ]);
 
 export const OPERATOR_HIDDEN_EVENT_TYPES = new Set<string>([
@@ -384,6 +386,7 @@ export function eventTitle(eventType: string): string {
     CONFIGURATION_CHANGED: 'Configuración de pedido actualizada',
     PRODUCTION_APPROVED: 'Producción aprobada',
     OUTPUT_GENERATED: 'Salida de producción generada',
+    OUTPUT_FAILED: 'Falló la generación de salida de producción',
   };
   return map[eventType] || eventType;
 }

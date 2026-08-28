@@ -1,5 +1,5 @@
 import { RequestInvalidError } from './configuration-schema';
-import type { DesignDistribution } from './design-distribution';
+import { selectedGarmentTypesOf, type DesignDistribution } from './design-distribution';
 import type { FamilyStyleConfig } from './garment-family-style';
 import type { GarmentType } from './order-configuration-domain';
 
@@ -49,6 +49,44 @@ export function assertCanGenerateOutputs(input: {
   if (selected.length && !input.previewApproved && !input.rawMaterial) {
     throw new RequestInvalidError('PREVIEW_PENDING');
   }
+}
+
+export function productionOutputGateInput(formValues?: Record<string, unknown> | null): {
+  rosterStatus?: string;
+  selectedGarmentTypes: string[];
+  productionRevisionId?: string;
+  designFileId?: string;
+  previewApproved?: boolean;
+  rawMaterial?: boolean;
+} {
+  const fv = formValues || {};
+  const intake = fv.rosterIntake as { status?: string } | undefined;
+  const revision = fv.productionRevision as { id?: string } | undefined;
+  const designRaw = fv.designFileId != null ? String(fv.designFileId).trim() : '';
+  return {
+    rosterStatus: intake?.status,
+    selectedGarmentTypes: selectedGarmentTypesOf(fv),
+    productionRevisionId: revision?.id,
+    designFileId: designRaw || undefined,
+    previewApproved: !!fv.previewApproved,
+    rawMaterial: !!fv.rawMaterialRequested,
+  };
+}
+
+/** Single production gate: roster + design + preview APPROVED or RAW. */
+export function assertOrderCanGenerateOutputs(formValues?: Record<string, unknown> | null): void {
+  assertCanGenerateOutputs(productionOutputGateInput(formValues));
+}
+
+export function isProductionGateError(error: unknown): boolean {
+  if (!(error instanceof RequestInvalidError)) return false;
+  const detail = String(error.message || '').replace(/^REQUEST_INVALID:/, '');
+  return (
+    detail === 'PREVIEW_PENDING' ||
+    detail === 'ROSTER_PENDING' ||
+    detail === 'DESIGN_REQUIRED' ||
+    detail === 'PRODUCTION_NOT_APPROVED'
+  );
 }
 
 export function buildProductionArtifacts(input: {

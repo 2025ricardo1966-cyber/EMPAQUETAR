@@ -8,7 +8,8 @@
     "dev:vite": "vite",
     "build:cloud": "tsc -p tsconfig.cloud.json",
     "cloud": "node dist/cloud/server.js",
-    "typecheck:cloud": "tsc -p tsconfig.cloud.json --noEmit"
+    "typecheck:cloud": "tsc -p tsconfig.cloud.json --noEmit",
+    "test": "node --test dist/contracts/order-production-output.test.js dist/cloud/production-cycle.test.js"
   },
   "engines": {
     "node": ">=20"

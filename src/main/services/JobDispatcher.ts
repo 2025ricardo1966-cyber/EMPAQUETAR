@@ -57,9 +57,10 @@ export class LocalExecutionWorker implements ExecutionWorkerPort {
     implementation: 'local-adapter',
   };
 
-  async accept(_job: ProductionJob): Promise<{ accepted: boolean }> {
+  async accept(_job: ProductionJob): Promise<{ accepted: boolean; note?: string }> {
     this.descriptor.lastHeartbeat = Date.now();
-    return { accepted: true };
+    // Admission only. Must never be treated as job completion or production success.
+    return { accepted: true, note: 'admission-only:not_completed' };
   }
 }
 
