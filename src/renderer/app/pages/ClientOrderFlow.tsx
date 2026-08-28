@@ -8,6 +8,13 @@ import { OjoZoneMark } from './OjoZoneMark';
 import { downloadBase64File } from '../../foundation/download';
 import type { OjoHint, OjoRegion } from '../../../contracts/visual-interpreter';
 import { ojoActionLabel } from '../../../contracts/visual-interpreter';
+import {
+  presentClientFlow,
+  defaultFlowConfiguration,
+  resolveFlowActions,
+  type ClientFlowPresentation,
+  type FlowFeatureKey,
+} from '../../../contracts/flow-configuration';
 
 type CatalogItem = {
   itemId: string;
@@ -181,8 +188,14 @@ export const ClientOrderFlow: React.FC<{
   const [laserConfirm, setLaserConfirm] = useState(false);
   const [viewer, setViewer] = useState<ViewerParams | null>(null);
   const [createdOrders, setCreatedOrders] = useState<Array<{ id: string; name: string }>>([]);
+  const [flowUi, setFlowUi] = useState<ClientFlowPresentation>(() => presentClientFlow(defaultFlowConfiguration('')));
   const currency = quote?.currency || tenant?.currency || '';
   const nameHasNumbers = /\d/.test(projectName);
+  const flowOn = (key: FlowFeatureKey) => flowUi.features[key] !== false;
+  const flowActions = resolveFlowActions(flowUi, {
+    previewMode: viewer?.previewMode === '3D' && flowOn('preview_3d') ? '3D' : '2D',
+    sample3dAvailable: !!ojoSession?.sample3dAvailable,
+  });
 
   const loadCatalog = useCallback(() => {
     void api
@@ -197,6 +210,16 @@ export const ClientOrderFlow: React.FC<{
   useEffect(() => {
     loadCatalog();
   }, [loadCatalog]);
+
+  useEffect(() => {
+    void api
+      .get('/client/flow-configuration')
+      .then((res) => {
+        const data = res.data as ClientFlowPresentation;
+        if (data?.features) setFlowUi(data);
+      })
+      .catch(() => undefined);
+  }, [api]);
 
   useEffect(() => {
     if (configStep !== 'tpu' || tpuAdmin) return;
@@ -383,7 +406,7 @@ export const ClientOrderFlow: React.FC<{
       .catch((err) => setNotice(t(apiNoticeKey(err))));
   };
 
-  const costPanel = (
+  const costPanel = flowOn('consumption') ? (
     <aside data-role="cost-engine">
       <h3>{t('flow.costs')}</h3>
       {quote ? (
@@ -405,7 +428,7 @@ export const ClientOrderFlow: React.FC<{
         <p>{t('app.empty')}</p>
       )}
     </aside>
-  );
+  ) : null;
 
   return (
     <div data-order-flow="client">
@@ -658,6 +681,7 @@ export const ClientOrderFlow: React.FC<{
           {configStep === 'roster' ? (
             <div data-step="roster">
               <h3>{t('flow.roster_check')}</h3>
+              {flowOn('excel_upload') ? (
               <input
                 aria-label="roster-file"
                 type="file"
@@ -684,6 +708,7 @@ export const ClientOrderFlow: React.FC<{
                     .catch((err) => setNotice(t(apiNoticeKey(err))));
                 }}
               />
+              ) : null}
               {rosterRows ? (
                 <div data-role="roster-review">
                   <p>{t('flow.understood')}</p>
@@ -911,7 +936,7 @@ export const ClientOrderFlow: React.FC<{
                     .then((res) => {
                       const data = res.data as { id?: string };
                       if (data.id) setDesignFileId(data.id);
-                      setConfigStep('ojo');
+                      setConfigStep(flowOn('ojo') ? 'ojo' : 'preview');
                     })
                     .catch((err) => setNotice(t(apiNoticeKey(err))));
                 }}
@@ -919,25 +944,29 @@ export const ClientOrderFlow: React.FC<{
             </>
           ) : null}
 
-          {configStep === 'ojo' && designUrl ? (
+          {configStep === 'ojo' && designUrl && flowOn('ojo') ? (
             <div data-step="ojo">
+              {flowOn('ojo_zone') ? (
               <OjoZoneMark
                 imageUrl={designUrl}
                 value={ojoRegion}
+                allowRect={flowOn('ojo_rect')}
+                allowEllipse={flowOn('ojo_ellipse')}
                 onChange={(region) => {
                   setOjoRegion(region);
                   setOjoNeedsHint(false);
                 }}
               />
+              ) : null}
               <button
                 type="button"
                 data-ojo="interpret"
-                disabled={!ojoRegion}
-                onClick={() => runOjo({ region: ojoRegion, hints: [] })}
+                disabled={flowOn('ojo_zone') && !ojoRegion}
+                onClick={() => runOjo({ region: flowOn('ojo_zone') ? ojoRegion : undefined, hints: [] })}
               >
                 {t('flow.ojo_interpret')}
               </button>
-              {ojoNeedsHint ? (
+              {ojoNeedsHint && flowOn('ojo_hint') ? (
                 <div data-ojo="hints">
                   <p data-ojo="hint-prompt">INDIQUE QUÉ ELEMENTO DESEA INTERPRETAR</p>
                   <label>
@@ -981,41 +1010,54 @@ export const ClientOrderFlow: React.FC<{
                   </button>
                 </div>
               ) : null}
-              {ojo && !ojoNeedsHint ? (
+              {ojo && (!ojoNeedsHint || !flowOn('ojo_hint')) ? (
                 <div data-ojo="result">
                   <p data-ojo-action={ojo.action}>
                     {ojoActionLabel((ojo.action as 'APTO' | 'ESCALAR_PREPARAR' | 'INTERVENCION_HUMANA') || 'APTO')}
                   </p>
                   {ojo.content?.summary ? <p data-ojo="content">{ojo.content.summary}</p> : null}
-                  {ojo.size ? (
+                  {ojo.size && flowOn('ojo_scale') ? (
                     <p data-ojo="scale">
                       {ojo.size.currentWidthPx}×{ojo.size.currentHeightPx}
                       {ojo.size.targetWidthPx ? ` → ${ojo.size.targetWidthPx}×${ojo.size.targetHeightPx}` : ''}
                     </p>
                   ) : null}
                   <div data-ojo="actions">
-                    <button
-                      type="button"
-                      data-ojo="download-2d"
-                      onClick={() => downloadOjoSample('2d')}
-                    >
-                      DESCARGAR MUESTRA 2D
-                    </button>
-                    <button
-                      type="button"
-                      data-ojo="download-3d"
-                      disabled={(viewer?.previewMode === '3D' ? '3D' : '2D') !== '3D' || !ojoSession?.sample3dAvailable}
-                      onClick={() => downloadOjoSample('3d')}
-                    >
-                      DESCARGAR MUESTRA 3D
-                    </button>
-                    <button
-                      type="button"
-                      data-ojo="continue-production"
-                      onClick={() => setConfigStep('preview')}
-                    >
-                      CONTINUAR A PRODUCCIÓN
-                    </button>
+                    {flowActions
+                      .filter((a) => a.visible)
+                      .map((action) => {
+                        if (action.key === 'download_2d') {
+                          return (
+                            <button key={action.key} type="button" data-ojo="download-2d" onClick={() => downloadOjoSample('2d')}>
+                              DESCARGAR MUESTRA 2D
+                            </button>
+                          );
+                        }
+                        if (action.key === 'download_3d') {
+                          return (
+                            <button key={action.key} type="button" data-ojo="download-3d" onClick={() => downloadOjoSample('3d')}>
+                              DESCARGAR MUESTRA 3D
+                            </button>
+                          );
+                        }
+                        if (action.key === 'preview') {
+                          return (
+                            <button key={action.key} type="button" data-ojo="preview" onClick={() => setConfigStep('preview')}>
+                              PREVISUALIZAR
+                            </button>
+                          );
+                        }
+                        return (
+                          <button
+                            key={action.key}
+                            type="button"
+                            data-ojo="continue-production"
+                            onClick={() => setConfigStep('preview')}
+                          >
+                            CONTINUAR A PRODUCCIÓN
+                          </button>
+                        );
+                      })}
                   </div>
                 </div>
               ) : null}
@@ -1025,7 +1067,33 @@ export const ClientOrderFlow: React.FC<{
           {configStep === 'preview' || configStep === 'pay' ? (
             <>
               <h3>{t('flow.preview')}</h3>
-              <ClientOrderPreviewAdaptive designUrl={designUrl || undefined} viewer={viewer} />
+              <div data-role="flow-preview-actions">
+                {flowActions
+                  .filter((a) => a.visible && a.key !== 'preview' && a.key !== 'continue_production')
+                  .map((action) =>
+                    action.key === 'download_3d' ? (
+                      <button key={action.key} type="button" data-ojo="download-3d" onClick={() => downloadOjoSample('3d')}>
+                        DESCARGAR MUESTRA 3D
+                      </button>
+                    ) : (
+                      <button key={action.key} type="button" data-ojo="download-2d" onClick={() => downloadOjoSample('2d')}>
+                        DESCARGAR MUESTRA 2D
+                      </button>
+                    )
+                  )}
+              </div>
+              <ClientOrderPreviewAdaptive
+                designUrl={designUrl || undefined}
+                viewer={
+                  flowOn('preview_3d')
+                    ? viewer
+                    : viewer
+                      ? { ...viewer, previewMode: '2D' }
+                      : { previewMode: '2D' }
+                }
+              />
+              {flowOn('client_approval') ? (
+              <>
               <h3>{t('flow.approve_q')}</h3>
               <button
                 type="button"
@@ -1086,6 +1154,8 @@ export const ClientOrderFlow: React.FC<{
                     {t('flow.yes')}
                   </button>
                 </div>
+              ) : null}
+              </>
               ) : null}
             </>
           ) : null}
@@ -1156,7 +1226,7 @@ export const ClientOrderFlow: React.FC<{
                 />
               </label>
               ) : null}
-              {payment && payment.meetsRequired === false ? (
+              {payment && payment.meetsRequired === false && flowOn('messaging') ? (
                 <div>
                   <p>{t('flow.shortfall')}</p>
                   <button

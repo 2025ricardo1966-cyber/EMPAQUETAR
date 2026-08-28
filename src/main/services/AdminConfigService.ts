@@ -14,6 +14,13 @@ import type { TraceService } from './TraceService';
 import type { WorkflowEngine } from './WorkflowEngine';
 import { t } from '../../i18n';
 import {
+  parseFlowConfiguration,
+  readFlowConfiguration,
+  writeFlowConfiguration,
+  FLOW_ACTION_DEFINITIONS,
+  FLOW_FEATURE_DEFINITIONS,
+} from '../../contracts/flow-configuration';
+import {
   normalizeCurrencyCode,
   normalizeLanguageTag,
   resolveConfiguredCurrency,
@@ -371,6 +378,73 @@ export class AdminConfigService {
     next.config = { ...(next.config || {}), clientVisibility: vis };
     await this.admin.persistConfig(next);
     return vis;
+  }
+
+  async getFlowConfiguration(ctx: AuthContext) {
+    this.assertRead(ctx);
+    const config = await this.config(ctx);
+    const flow = readFlowConfiguration(config);
+    return this.flowDto(flow);
+  }
+
+  async putFlowConfiguration(ctx: AuthContext, body: Record<string, unknown>) {
+    this.assertWrite(ctx);
+    const config = await this.config(ctx);
+    if (config.tenantId !== ctx.tenantId) throw new AccessDeniedError();
+    const now = Date.now();
+    const incoming = parseFlowConfiguration(
+      {
+        features: body.features,
+        actionOrder: body.actionOrder,
+        updatedAt: now,
+        updatedBy: ctx.userId,
+      },
+      ctx.tenantId,
+      now
+    );
+    incoming.updatedBy = ctx.userId;
+    incoming.updatedAt = now;
+    incoming.tenantId = ctx.tenantId;
+    const next = await this.config(ctx);
+    next.config = writeFlowConfiguration(next, incoming);
+    const vis = { ...(((next.config.clientVisibility as Record<string, unknown>) || {}) as Record<string, unknown>) };
+    const consumption = incoming.features.find((f) => f.featureKey === 'consumption');
+    const materials = incoming.features.find((f) => f.featureKey === 'materials');
+    if (consumption) vis.showConsumption = consumption.enabled !== false;
+    if (materials) vis.showMaterials = materials.enabled !== false;
+    next.config.clientVisibility = vis;
+    next.updatedAt = now;
+    await this.admin.persistConfig(next);
+    await this.tracer.record({
+      tenantId: ctx.tenantId,
+      entityType: 'config',
+      entityId: ctx.tenantId,
+      eventType: 'FLOW_CONFIGURATION_UPDATED',
+      actorType: ctx.roleId === 'ADMIN_PRINCIPAL' ? 'ADMIN_PRINCIPAL' : 'ADMIN',
+      actorId: ctx.userId,
+      metadata: {
+        eventType: 'FLOW_CONFIGURATION_UPDATED',
+        actionOrder: incoming.actionOrder.join(','),
+        disabled: incoming.features.filter((f) => !f.enabled).map((f) => f.featureKey).join(','),
+      },
+      correlationId: ctx.tenantId,
+    });
+    return this.flowDto(incoming);
+  }
+
+  private flowDto(flow: ReturnType<typeof readFlowConfiguration>) {
+    return {
+      version: flow.version,
+      tenantId: flow.tenantId,
+      features: flow.features,
+      actionOrder: flow.actionOrder,
+      updatedAt: flow.updatedAt,
+      updatedBy: flow.updatedBy || null,
+      catalog: {
+        features: FLOW_FEATURE_DEFINITIONS,
+        actions: FLOW_ACTION_DEFINITIONS,
+      },
+    };
   }
 
   async getLimits(ctx: AuthContext) {
