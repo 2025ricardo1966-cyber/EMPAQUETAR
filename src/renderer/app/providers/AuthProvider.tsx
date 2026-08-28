@@ -63,6 +63,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (email: string, password: string) => {
       const res = await api.post('/auth/login', { email, password });
       const parsed = tokensFromLogin(res.data);
+      if (!parsed.accessToken || !parsed.user?.roleId) {
+        throw new Error('LOGIN_FAILED');
+      }
       tokens.current.save({
         accessToken: parsed.accessToken,
         refreshToken: parsed.refreshToken,

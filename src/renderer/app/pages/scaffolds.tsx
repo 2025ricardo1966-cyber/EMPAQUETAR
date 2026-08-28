@@ -62,8 +62,28 @@ export const AccessPage: React.FC = () => {
           }}
         >
           <h1>{t('actions.login')}</h1>
-          <input aria-label="email" placeholder={t('admin.email')} value={email} onChange={(ev) => setEmail(ev.target.value)} />
-          <input aria-label="password" type="password" placeholder={t('admin.password')} value={password} onChange={(ev) => setPassword(ev.target.value)} />
+          <input
+            aria-label="email"
+            name="email"
+            type="email"
+            autoComplete="username"
+            className="input"
+            placeholder={t('admin.email')}
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+            required
+          />
+          <input
+            aria-label="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            className="input"
+            placeholder={t('admin.password')}
+            value={password}
+            onChange={(ev) => setPassword(ev.target.value)}
+            required
+          />
           <button type="submit">{t('actions.login')}</button>
         </form>
       ) : null}
@@ -101,9 +121,37 @@ export const AccessPage: React.FC = () => {
           }}
         >
           <h1>{t('access.activate')}</h1>
-          <input aria-label="workshop-name" placeholder={t('access.workshop_name')} value={workshop} onChange={(ev) => setWorkshop(ev.target.value)} />
-          <input aria-label="email" placeholder={t('access.admin_email')} value={email} onChange={(ev) => setEmail(ev.target.value)} />
-          <input aria-label="password" type="password" placeholder={t('admin.password')} value={password} onChange={(ev) => setPassword(ev.target.value)} />
+          <input
+            aria-label="workshop-name"
+            name="workshop"
+            className="input"
+            placeholder={t('access.workshop_name')}
+            value={workshop}
+            onChange={(ev) => setWorkshop(ev.target.value)}
+            required
+          />
+          <input
+            aria-label="email"
+            name="email"
+            type="email"
+            autoComplete="username"
+            className="input"
+            placeholder={t('access.admin_email')}
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+            required
+          />
+          <input
+            aria-label="password"
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            className="input"
+            placeholder={t('admin.password')}
+            value={password}
+            onChange={(ev) => setPassword(ev.target.value)}
+            required
+          />
           <button type="submit">{t('access.activate')}</button>
         </form>
       ) : null}
@@ -127,9 +175,37 @@ export const AccessPage: React.FC = () => {
           }}
         >
           <h1>{t('access.register')}</h1>
-          <input aria-label="name" placeholder={t('access.your_name')} value={name} onChange={(ev) => setName(ev.target.value)} />
-          <input aria-label="email" placeholder={t('admin.email')} value={email} onChange={(ev) => setEmail(ev.target.value)} />
-          <input aria-label="password" type="password" placeholder={t('admin.password')} value={password} onChange={(ev) => setPassword(ev.target.value)} />
+          <input
+            aria-label="name"
+            name="name"
+            className="input"
+            placeholder={t('access.your_name')}
+            value={name}
+            onChange={(ev) => setName(ev.target.value)}
+            required
+          />
+          <input
+            aria-label="email"
+            name="email"
+            type="email"
+            autoComplete="username"
+            className="input"
+            placeholder={t('admin.email')}
+            value={email}
+            onChange={(ev) => setEmail(ev.target.value)}
+            required
+          />
+          <input
+            aria-label="password"
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            className="input"
+            placeholder={t('admin.password')}
+            value={password}
+            onChange={(ev) => setPassword(ev.target.value)}
+            required
+          />
           <button type="submit">{t('access.register')}</button>
         </form>
       ) : null}
