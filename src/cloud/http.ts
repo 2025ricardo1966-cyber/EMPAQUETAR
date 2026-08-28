@@ -2198,6 +2198,16 @@ async function clientPortalRoutes(
         })
       );
     }
+    if (method === 'POST' && rest === 'ojo') {
+      return wrap(
+        200,
+        await service.interpretOjo(ctx, orderId, {
+          fileId: body.fileId ? String(body.fileId) : undefined,
+          region: body.region,
+          hints: body.hints,
+        })
+      );
+    }
     const clientFile = rest.match(/^files\/([^/]+)$/);
     if (method === 'GET' && clientFile) {
       return wrap(200, await service.downloadOrderFile(ctx, orderId, clientFile[1]));

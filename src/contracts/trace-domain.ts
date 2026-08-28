@@ -103,7 +103,11 @@ export type ClientPortalEventType =
   | 'PRODUCTION_APPROVED'
   | 'OUTPUT_GENERATED'
   | 'OUTPUT_FAILED'
-  | 'OJO_EVALUATED';
+  | 'OJO_EVALUATED'
+  | 'OJO_REGION_SELECTED'
+  | 'OJO_HINT_APPLIED'
+  | 'OJO_TRANSFORMED'
+  | 'OJO_REANALYZED';
 
 export type DomainEventType =
   | OrderDomainEventType
@@ -248,6 +252,10 @@ export const CUSTOMER_VISIBLE_EVENT_TYPES = new Set<string>([
   'OUTPUT_GENERATED',
   'OUTPUT_FAILED',
   'OJO_EVALUATED',
+  'OJO_REGION_SELECTED',
+  'OJO_HINT_APPLIED',
+  'OJO_TRANSFORMED',
+  'OJO_REANALYZED',
 ]);
 
 export const OPERATOR_HIDDEN_EVENT_TYPES = new Set<string>([
@@ -392,6 +400,10 @@ export function eventTitle(eventType: string): string {
     OUTPUT_GENERATED: 'Salida de producción generada',
     OUTPUT_FAILED: 'Falló la generación de salida de producción',
     OJO_EVALUATED: 'OJO interpretó el material',
+    OJO_REGION_SELECTED: 'OJO recibió la zona marcada',
+    OJO_HINT_APPLIED: 'OJO recibió la pista del elemento',
+    OJO_TRANSFORMED: 'Motor determinista transformó el archivo (original conservado)',
+    OJO_REANALYZED: 'OJO reanalizó el resultado de la transformación',
   };
   return map[eventType] || eventType;
 }
