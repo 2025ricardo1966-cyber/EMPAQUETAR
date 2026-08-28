@@ -83,6 +83,7 @@ import {
   isProductionGateError,
 } from '../../contracts/order-production-output';
 import { buildIndustrialOrderArtifacts } from './orderIndustrialExport';
+import { interpretIngestedDesign } from './ojo/VisualInterpreter';
 
 function contactOrThrow(input: Parameters<typeof sanitizeContact>[0]) {
   try {
@@ -471,6 +472,7 @@ export class ClientPortalService {
       roster: this.presentRoster(order),
       configuration: this.presentConfiguration(order),
       viewer: this.viewerFromOrder(order),
+      ojo: order.formValues?.ojoInterpretation || null,
       outputs: Array.isArray(order.formValues?.productionOutputs) ? order.formValues.productionOutputs : [],
       timeline: timeline.slice(-20),
     };
@@ -781,7 +783,35 @@ export class ClientPortalService {
       if (existing) {
         formValues.designDistribution = { ...existing, designFileId: fileId, designKey: fileId };
       }
+      try {
+        formValues.ojoInterpretation = interpretIngestedDesign({
+          fileId,
+          filename,
+          mimeType: storedMime,
+          bytes,
+        });
+      } catch {
+        /* OJO is advisory: never block ingest */
+      }
       await this.orders.patchCustomerDraft(orderId, { actorId: ctx.userId, role: 'customer' }, { formValues });
+      const ojo = formValues.ojoInterpretation as { productionFitness?: string; humanIntervention?: boolean } | undefined;
+      if (ojo) {
+        await this.tracer.record({
+          tenantId: ctx.tenantId,
+          entityType: 'artifact',
+          entityId: fileId,
+          eventType: 'OJO_EVALUATED',
+          actorType: 'SYSTEM',
+          actorId: 'ojo',
+          metadata: {
+            orderId,
+            fileId,
+            fitness: ojo.productionFitness,
+            humanIntervention: !!ojo.humanIntervention,
+          },
+          correlationId: orderId,
+        });
+      }
     }
     return { id: fileId, filename, mimeType: mime, sizeBytes: bytes.length, status: 'PENDING', storageKey, roster };
   }
@@ -1843,17 +1873,21 @@ export class ClientPortalService {
     const family =
       families.find((f) => f.garmentType === (first?.garmentType || gc?.garmentType || fv.garmentType)) || families[0];
     const style = family?.style;
-    return orderToViewerParams({
-      garmentType: String(first?.garmentType || family?.garmentType || gc?.garmentType || fv.garmentType || ''),
-      sizeLabel: String(first?.sizeLabel || rosterFirst?.sizeLabel || rosterFirst?.size || fv.sizeLabel || ''),
-      materialName: String(fv.materialName || ''),
-      designUrl: fv.designFileId ? String(fv.designFileId) : undefined,
-      tpu,
-      collarId: style?.collarId,
-      sleeveId: style?.sleeveId,
-      fabricId: style?.fabricId,
-      colors: style?.colors,
-    });
+    const ojo = fv.ojoInterpretation as { layer?: unknown } | undefined;
+    return {
+      ...orderToViewerParams({
+        garmentType: String(first?.garmentType || family?.garmentType || gc?.garmentType || fv.garmentType || ''),
+        sizeLabel: String(first?.sizeLabel || rosterFirst?.sizeLabel || rosterFirst?.size || fv.sizeLabel || ''),
+        materialName: String(fv.materialName || ''),
+        designUrl: fv.designFileId ? String(fv.designFileId) : undefined,
+        tpu,
+        collarId: style?.collarId,
+        sleeveId: style?.sleeveId,
+        fabricId: style?.fabricId,
+        colors: style?.colors,
+      }),
+      designLayer: ojo?.layer || null,
+    };
   }
 
   private familiesFromForm(formValues: Record<string, unknown>): GarmentFamilyConfig[] {

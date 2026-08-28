@@ -96,12 +96,14 @@ export type ClientPortalEventType =
   | 'PAYMENT_CONFIRMED'
   | 'PAYMENT_REJECTED'
   | 'PAYMENT_CHECKOUT_CREATED'
+  | 'PAYMENT_REFUNDED'
   | 'PROJECT_NAME_CHANGED'
   | 'ROSTER_APPROVED'
   | 'CONFIGURATION_CHANGED'
   | 'PRODUCTION_APPROVED'
   | 'OUTPUT_GENERATED'
-  | 'OUTPUT_FAILED';
+  | 'OUTPUT_FAILED'
+  | 'OJO_EVALUATED';
 
 export type DomainEventType =
   | OrderDomainEventType
@@ -245,6 +247,7 @@ export const CUSTOMER_VISIBLE_EVENT_TYPES = new Set<string>([
   'PRODUCTION_APPROVED',
   'OUTPUT_GENERATED',
   'OUTPUT_FAILED',
+  'OJO_EVALUATED',
 ]);
 
 export const OPERATOR_HIDDEN_EVENT_TYPES = new Set<string>([
@@ -381,12 +384,14 @@ export function eventTitle(eventType: string): string {
     PAYMENT_CONFIRMED: 'Pago confirmado',
     PAYMENT_REJECTED: 'Pago rechazado',
     PAYMENT_CHECKOUT_CREATED: 'Checkout de pago creado',
+    PAYMENT_REFUNDED: 'Pago reembolsado',
     PROJECT_NAME_CHANGED: 'Nombre de pedido modificado',
     ROSTER_APPROVED: 'Plantel aprobado',
     CONFIGURATION_CHANGED: 'Configuración de pedido actualizada',
     PRODUCTION_APPROVED: 'Producción aprobada',
     OUTPUT_GENERATED: 'Salida de producción generada',
     OUTPUT_FAILED: 'Falló la generación de salida de producción',
+    OJO_EVALUATED: 'OJO interpretó el material',
   };
   return map[eventType] || eventType;
 }

@@ -26,6 +26,9 @@ export interface ControlPlaneEnv {
   mpWebhookSecret?: string;
   stripeSecretKey?: string;
   stripeWebhookSecret?: string;
+  stripePublishableKey?: string;
+  stripeMode: 'checkout' | 'payment_intent';
+  paymentCurrency?: string;
   paymentSuccessUrl?: string;
   paymentFailureUrl?: string;
   paymentPendingUrl?: string;
@@ -114,6 +117,9 @@ export function loadControlPlaneEnv(raw: NodeJS.ProcessEnv = process.env): Contr
     mpWebhookSecret: raw.MP_WEBHOOK_SECRET || undefined,
     stripeSecretKey: raw.STRIPE_SECRET_KEY || undefined,
     stripeWebhookSecret: raw.STRIPE_WEBHOOK_SECRET || undefined,
+    stripePublishableKey: raw.STRIPE_PUBLISHABLE_KEY || undefined,
+    stripeMode: raw.STRIPE_MODE === 'payment_intent' ? 'payment_intent' : 'checkout',
+    paymentCurrency: raw.PAYMENT_CURRENCY || raw.STRIPE_CURRENCY || undefined,
     paymentSuccessUrl: raw.PAYMENT_SUCCESS_URL || undefined,
     paymentFailureUrl: raw.PAYMENT_FAILURE_URL || undefined,
     paymentPendingUrl: raw.PAYMENT_PENDING_URL || undefined,

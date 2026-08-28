@@ -13,7 +13,7 @@
     "start": "node dist/cloud/server.js",
     "cloud": "node dist/cloud/server.js",
     "typecheck:cloud": "tsc -p tsconfig.cloud.json --noEmit",
-    "test": "node --test --test-timeout=180000 dist/contracts/order-production-output.test.js dist/cloud/production-cycle.test.js"
+    "test": "node --test --test-timeout=180000 dist/contracts/order-production-output.test.js dist/cloud/production-cycle.test.js dist/contracts/ojo-visual-interpreter.test.js dist/contracts/payment-currency.test.js"
   },
   "engines": {
     "node": ">=20"

@@ -13,6 +13,13 @@ type ViewerParams = {
   fabricId?: string;
   collarId?: string;
   sleeveId?: string;
+  designLayer?: {
+    zone: string;
+    scale: number;
+    orientation: string;
+    proportion: { width: number; height: number; ratio: number } | null;
+    designType: string;
+  } | null;
 };
 
 export const ClientOrderPreview3D: React.FC<{
@@ -55,6 +62,8 @@ export const ClientOrderPreview3D: React.FC<{
           piezas={resolved.piezas}
           fabricId={(viewer.fabricId as FabricId) || 'dry-fit'}
           height={320}
+          designUrl={designUrl}
+          designLayer={viewer.designLayer}
         />
       ) : viewer?.ready ? (
         <p>Vista 3D no disponible para esta prenda.</p>

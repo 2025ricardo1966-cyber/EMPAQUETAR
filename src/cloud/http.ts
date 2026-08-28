@@ -326,7 +326,7 @@ async function route(
   const { store, env } = kernel;
   const ip = clientIp(req);
   if (method === 'GET' && path === '/health') {
-    return { status: 200, body: { ok: true, role: 'control-plane', env: env.name, ephemeral: env.dataEphemeral } };
+    return { status: 200, body: { ok: true, ephemeral: env.dataEphemeral } };
   }
   if (method === 'GET' && path === '/ready') {
     const db = await kernel.db.ready();
@@ -1247,6 +1247,17 @@ async function route(
           exceptionNote: body.exceptionNote ? String(body.exceptionNote) : undefined,
         }
       ),
+      tenant: tenantId,
+    };
+  }
+
+  const payRefund = path.match(/^\/admin\/orders\/([^/]+)\/payment\/refund$/);
+  if (method === 'POST' && payRefund) {
+    authorize(['ADMIN_PRINCIPAL', 'SUBADMIN', 'ADMIN'])(ctx);
+    authorizePermission('orders.edit')(ctx);
+    return {
+      status: 200,
+      body: await kernel.payments.refund(ctx, payRefund[1], body.amount != null ? Number(body.amount) : undefined),
       tenant: tenantId,
     };
   }

@@ -35,6 +35,14 @@ export interface Garment3DSceneConfig {
   view: CameraViewPreset;
   autoRotate: boolean;
   zoom: number;
+  /** OJO layer hint. V1 stores metadata; texture application is a later step. */
+  designLayer?: {
+    zone: string;
+    scale: number;
+    orientation: string;
+    proportion: { width: number; height: number; ratio: number } | null;
+    designType: string;
+  } | null;
 }
 
 export interface Garment3DSceneConfigInput {

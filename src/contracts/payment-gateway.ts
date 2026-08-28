@@ -16,6 +16,7 @@ export interface CheckoutResult {
   checkoutUrl: string;
   gatewayOrderId: string;
   gatewayPaymentId?: string;
+  clientSecret?: string;
 }
 
 export interface ParsedPaymentEvent {
@@ -26,6 +27,8 @@ export interface ParsedPaymentEvent {
   currency: string;
   eventId: string;
   eventType: string;
+  tenantId?: string;
+  orderId?: string;
 }
 
 export interface PaymentGatewayAdapter {
@@ -51,6 +54,8 @@ export interface PaymentAttemptRecord {
 export interface TenantPaymentsConfig {
   gateway?: PaymentGatewayKind;
   allowManual?: boolean;
+  /** ISO 4217. Optional per-tenant override; not hardcoded to a single market. */
+  currency?: string;
   mercadopago?: { accessToken?: string; publicKey?: string; webhookSecret?: string };
   stripe?: { secretKey?: string; publishableKey?: string; webhookSecret?: string };
 }

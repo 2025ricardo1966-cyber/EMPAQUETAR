@@ -115,6 +115,7 @@ export interface ViewerOrderParams {
   collarId?: OrderCollarId;
   sleeveId?: OrderSleeveId;
   colors?: FamilyStyleConfig['colors'];
+  designLayer?: import('./visual-interpreter').OjoLayerHint | null;
 }
 
 export const LASER_MATERIAL_ID = 'laser:registro';
