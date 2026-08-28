@@ -145,6 +145,7 @@ export class Garment3DSceneController {
   updateConfig(next: Partial<Garment3DSceneConfig>): void {
     const prev = this.config;
     this.config = { ...this.config, ...next };
+    // designLayer is retained for a later texture/layer pass; V1 does not bind a map.
 
     if (next.moldId || next.piezas || next.fabricId) {
       const moldId = next.moldId ?? prev.moldId;

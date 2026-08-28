@@ -54,6 +54,7 @@
     "production_not_approved": "Falta la aprobación productiva del pedido.",
     "design_required": "El pedido necesita un diseño aprobado antes de generar salidas de producción.",
     "preview_pending": "Falta la aprobación 3D o la solicitud de material en crudo.",
+    "output_empty": "No se pudieron generar archivos de producción para este pedido.",
     "not_cdr": "El archivo no es CorelDRAW (.cdr).",
     "ora_invalid_dimension": "Las dimensiones indicadas no son válidas.",
     "ora_pattern_not_found": "No hay un molde de catálogo para esa combinación.",
@@ -125,6 +126,23 @@
     "trial_usage": "{{used}} de 5 pedidos del período de prueba",
     "restricted": "Tu membresía no permite operar ahora. Comunicate con el taller.",
     "notifications": "Avisos"
+  },
+  "access": {
+    "activate": "Activar taller",
+    "register": "Crear cuenta de cliente",
+    "workshop_name": "Nombre del taller",
+    "admin_email": "Email del administrador",
+    "your_name": "Tu nombre",
+    "activated": "Taller activado. Ya podés operar.",
+    "registered": "Cuenta creada."
+  },
+  "ops": {
+    "outputs": "Archivos de producción",
+    "files": "Archivos",
+    "trace": "Trazabilidad",
+    "download": "Descargar",
+    "customer": "Cliente",
+    "no_orders": "No hay pedidos todavía."
   },
   "admin": {
     "inbox": "Comunicaciones",

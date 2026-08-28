@@ -206,6 +206,22 @@ export class WorkshopWorkspaceService {
     return this.presentFiles(ctx, await this.orders.getOrder(orderId, 'admin') as PersistedOrder);
   }
 
+  async downloadOrderFile(ctx: AuthContext, orderId: string, fileId: string) {
+    this.assertStaff(ctx, 'orders.view');
+    await this.requireOrder(ctx, orderId);
+    const file = await this.store.getOrderFile(fileId);
+    if (!file || file.tenantId !== ctx.tenantId || file.orderId !== orderId) throw new AccessDeniedError();
+    const bytes = await this.store.readBlob(file.id);
+    if (!bytes?.length) throw new AccessDeniedError();
+    return {
+      id: file.id,
+      filename: file.filename,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      contentBase64: bytes.toString('base64'),
+    };
+  }
+
   async convert(ctx: AuthContext, orderId: string, fileId: string) {
     this.assertStaff(ctx, 'orders.edit');
     await this.requireOrder(ctx, orderId);

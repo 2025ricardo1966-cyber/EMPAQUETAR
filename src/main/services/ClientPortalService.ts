@@ -77,8 +77,13 @@ import {
   familyStyleOptions,
   moldeIdForFamily,
 } from '../../contracts/garment-family-style';
-import { assertCanGenerateOutputs } from '../../contracts/order-production-output';
+import { actorTypeFromRole } from '../../contracts/trace-domain';
+import {
+  assertOrderCanGenerateOutputs,
+  isProductionGateError,
+} from '../../contracts/order-production-output';
 import { buildIndustrialOrderArtifacts } from './orderIndustrialExport';
+import { interpretIngestedDesign } from './ojo/VisualInterpreter';
 
 function contactOrThrow(input: Parameters<typeof sanitizeContact>[0]) {
   try {
@@ -205,9 +210,13 @@ export class ClientPortalService {
       postalCode: input.postalCode,
       address: input.address,
     });
-    const preferredLanguage =
-      (input.preferredLanguage ? normalizeLanguageTag(input.preferredLanguage) : undefined) ||
-      resolveConfiguredLanguage(config);
+    let preferredLanguage: string | undefined;
+    try {
+      preferredLanguage = input.preferredLanguage ? normalizeLanguageTag(input.preferredLanguage) : undefined;
+    } catch {
+      preferredLanguage = undefined;
+    }
+    preferredLanguage = preferredLanguage || resolveConfiguredLanguage(config);
     const existing = await this.store.getUserByLogin(input.tenantId, email);
     if (existing) throw new RequestInvalidError('LOGIN_TAKEN');
     const now = Date.now();
@@ -226,8 +235,8 @@ export class ClientPortalService {
       password: await hashPassword(input.password),
       createdAt: now,
       updatedAt: now,
-      emailVerified: false,
-      verificationToken,
+      emailVerified: !process.env.RESEND_API_KEY,
+      verificationToken: process.env.RESEND_API_KEY ? verificationToken : null,
       verificationExpiresAt: now + 24 * 60 * 60 * 1000,
       preferredLanguage,
     };
@@ -463,6 +472,8 @@ export class ClientPortalService {
       roster: this.presentRoster(order),
       configuration: this.presentConfiguration(order),
       viewer: this.viewerFromOrder(order),
+      ojo: order.formValues?.ojoInterpretation || null,
+      outputs: Array.isArray(order.formValues?.productionOutputs) ? order.formValues.productionOutputs : [],
       timeline: timeline.slice(-20),
     };
   }
@@ -772,7 +783,35 @@ export class ClientPortalService {
       if (existing) {
         formValues.designDistribution = { ...existing, designFileId: fileId, designKey: fileId };
       }
+      try {
+        formValues.ojoInterpretation = interpretIngestedDesign({
+          fileId,
+          filename,
+          mimeType: storedMime,
+          bytes,
+        });
+      } catch {
+        /* OJO is advisory: never block ingest */
+      }
       await this.orders.patchCustomerDraft(orderId, { actorId: ctx.userId, role: 'customer' }, { formValues });
+      const ojo = formValues.ojoInterpretation as { productionFitness?: string; humanIntervention?: boolean } | undefined;
+      if (ojo) {
+        await this.tracer.record({
+          tenantId: ctx.tenantId,
+          entityType: 'artifact',
+          entityId: fileId,
+          eventType: 'OJO_EVALUATED',
+          actorType: 'SYSTEM',
+          actorId: 'ojo',
+          metadata: {
+            orderId,
+            fileId,
+            fitness: ojo.productionFitness,
+            humanIntervention: !!ojo.humanIntervention,
+          },
+          correlationId: orderId,
+        });
+      }
     }
     return { id: fileId, filename, mimeType: mime, sizeBytes: bytes.length, status: 'PENDING', storageKey, roster };
   }
@@ -788,6 +827,10 @@ export class ClientPortalService {
       throw new PaymentRequiredError('Para enviar el pedido necesitamos confirmar la condición de pago.');
     }
     this.assertProductionReady(order);
+    const selected = selectedGarmentTypesOf(order.formValues);
+    const outputs = selected.length
+      ? await this.ensureIndustrialOutputs(order, { actorId: ctx.userId, roleId: ctx.roleId })
+      : { files: [] as Array<{ id: string; filename: string; mimeType: string; format: string }> };
     await this.tracer.record({
       tenantId: ctx.tenantId,
       entityType: 'order',
@@ -795,26 +838,29 @@ export class ClientPortalService {
       eventType: 'ORDER_SUBMITTED',
       actorType: 'CUSTOMER',
       actorId: ctx.userId,
-      metadata: { orderId, status: order.status },
+      metadata: { orderId, status: order.status, outputCount: outputs.files.length },
       correlationId: orderId,
     });
-    try {
-      await this.orchestrator.startProductionForSubmit(orderId, ctx.tenantId);
-    } catch {
-      /* pipeline deferred */
-    }
+    await this.startWorkshopPipelineAfterOutputs(orderId, ctx.tenantId);
+    const submitted = (await this.orders.getOrder(orderId, 'admin')) || order;
     await this.tracer.notifyOperational({
       tenantId: ctx.tenantId,
       type: 'ORDER_RECEIVED',
       title: 'Pedido listo para revisión',
-      workshopMessage: `Pedido listo para revisión ${order.displayNumber || orderId}.`,
+      workshopMessage: `Pedido listo para revisión ${submitted.displayNumber || orderId}.`,
       entityType: 'order',
       entityId: orderId,
-      order,
+      order: submitted,
       dedupeKey: `${orderId}:READY_REVIEW`,
       includeWorkshop: true,
     });
-    return this.getOrder(ctx, orderId);
+    const view = await this.getOrder(ctx, orderId);
+    return {
+      ...view,
+      orderId,
+      status: view.status,
+      outputs: outputs.files,
+    };
   }
 
   async approve(ctx: AuthContext, orderId: string) {
@@ -957,13 +1003,11 @@ export class ClientPortalService {
       },
       correlationId: orderId,
     });
+    let production: { files: Array<{ id: string; filename: string; mimeType: string; format: string }> } = { files: [] };
     if (this.economicOk(payment)) {
       await this.freezeOnAccreditedDeposit(ctx, orderId, payment);
-      try {
-        await this.orchestrator.startProductionForSubmit(orderId, ctx.tenantId);
-      } catch {
-        /* deferred */
-      }
+      const fresh = (await this.orders.getOrder(orderId, 'admin')) || order;
+      production = await this.triggerProductionAfterPayment(ctx, fresh);
     }
     await this.tracer.notifyOperational({
       tenantId: ctx.tenantId,
@@ -978,7 +1022,12 @@ export class ClientPortalService {
       includeCustomer: true,
       includeWorkshop: true,
     });
-    return payment;
+    return {
+      ...payment,
+      orderId,
+      status: ((await this.orders.getOrder(orderId, 'admin')) || order).status,
+      outputs: production.files,
+    };
   }
 
   async addTrustCode(ctx: AuthContext, input: { code: string; creditLimit: number }) {
@@ -1808,6 +1857,7 @@ export class ClientPortalService {
       distribution: fv.designDistribution || null,
       preview3d: (fv.preview3dDecision as Preview3DDecision | undefined) || null,
       productionRevision: fv.productionRevision || null,
+      productionOutputs: fv.productionOutputs || null,
       styleOptions: familyStyleOptions(),
     };
   }
@@ -1823,17 +1873,21 @@ export class ClientPortalService {
     const family =
       families.find((f) => f.garmentType === (first?.garmentType || gc?.garmentType || fv.garmentType)) || families[0];
     const style = family?.style;
-    return orderToViewerParams({
-      garmentType: String(first?.garmentType || family?.garmentType || gc?.garmentType || fv.garmentType || ''),
-      sizeLabel: String(first?.sizeLabel || rosterFirst?.sizeLabel || rosterFirst?.size || fv.sizeLabel || ''),
-      materialName: String(fv.materialName || ''),
-      designUrl: fv.designFileId ? String(fv.designFileId) : undefined,
-      tpu,
-      collarId: style?.collarId,
-      sleeveId: style?.sleeveId,
-      fabricId: style?.fabricId,
-      colors: style?.colors,
-    });
+    const ojo = fv.ojoInterpretation as { layer?: unknown } | undefined;
+    return {
+      ...orderToViewerParams({
+        garmentType: String(first?.garmentType || family?.garmentType || gc?.garmentType || fv.garmentType || ''),
+        sizeLabel: String(first?.sizeLabel || rosterFirst?.sizeLabel || rosterFirst?.size || fv.sizeLabel || ''),
+        materialName: String(fv.materialName || ''),
+        designUrl: fv.designFileId ? String(fv.designFileId) : undefined,
+        tpu,
+        collarId: style?.collarId,
+        sleeveId: style?.sleeveId,
+        fabricId: style?.fabricId,
+        colors: style?.colors,
+      }),
+      designLayer: ojo?.layer || null,
+    };
   }
 
   private familiesFromForm(formValues: Record<string, unknown>): GarmentFamilyConfig[] {
@@ -2110,12 +2164,48 @@ export class ClientPortalService {
   }
 
   private assertProductionReady(order: PersistedOrder) {
+    assertOrderCanGenerateOutputs(order.formValues);
+  }
+
+  private async triggerProductionAfterPayment(
+    ctx: AuthContext,
+    order: PersistedOrder
+  ): Promise<{ files: Array<{ id: string; filename: string; mimeType: string; format: string }> }> {
     const selected = selectedGarmentTypesOf(order.formValues);
-    if (!selected.length) return;
-    const intake = (order.formValues?.rosterIntake || null) as RosterIntake | null;
-    if (!intake || intake.status !== 'APPROVED') throw new RequestInvalidError('ROSTER_PENDING');
-    const families = this.familiesFromForm(order.formValues || {});
-    if (!families.length) throw new RequestInvalidError('CONFIG_INCOMPLETE');
+    if (!selected.length) {
+      await this.startWorkshopPipelineAfterOutputs(order.orderId, order.tenantId);
+      return { files: [] };
+    }
+    try {
+      this.assertProductionReady(order);
+    } catch (error) {
+      if (isProductionGateError(error)) return { files: [] };
+      throw error;
+    }
+    const outputs = await this.ensureIndustrialOutputs(order, { actorId: ctx.userId, roleId: ctx.roleId });
+    await this.startWorkshopPipelineAfterOutputs(order.orderId, order.tenantId);
+    return { files: outputs.files };
+  }
+
+  private async startWorkshopPipelineAfterOutputs(orderId: string, tenantId: string): Promise<void> {
+    try {
+      await this.orchestrator.startProductionForSubmit(orderId, tenantId);
+    } catch (error) {
+      await this.tracer.record({
+        tenantId,
+        entityType: 'order',
+        entityId: orderId,
+        eventType: 'OUTPUT_FAILED',
+        actorType: 'SYSTEM',
+        actorId: 'pipeline',
+        metadata: {
+          orderId,
+          phase: 'workshop-pipeline',
+          error: error instanceof Error ? error.message : 'PIPELINE_FAILED',
+        },
+        correlationId: orderId,
+      });
+    }
   }
 
   private nextProductionRevision(order: PersistedOrder, actorId: string, totalUnits: number) {
@@ -2132,66 +2222,140 @@ export class ClientPortalService {
   async generateProductionOutputs(ctx: AuthContext, orderId: string) {
     await this.requireCustomer(ctx);
     const order = await this.orders.getOrderForCustomer(orderId, ctx.tenantId, ctx.userId);
-    const selected = selectedGarmentTypesOf(order.formValues);
-    const intake = (order.formValues?.rosterIntake || null) as RosterIntake | null;
-    const revision = (order.formValues?.productionRevision || null) as { id?: string; version?: number } | null;
-    assertCanGenerateOutputs({
-      rosterStatus: intake?.status,
-      selectedGarmentTypes: selected,
-      productionRevisionId: revision?.id,
-      designFileId: order.formValues?.designFileId ? String(order.formValues.designFileId) : undefined,
-      previewApproved: !!order.formValues?.previewApproved,
-      rawMaterial: !!order.formValues?.rawMaterialRequested,
-    });
-    const distribution = order.formValues?.designDistribution as import('../../contracts/design-distribution').DesignDistribution | undefined;
-    if (!distribution) throw new RequestInvalidError('PRODUCTION_NOT_APPROVED');
-    const styles = Object.fromEntries(
-      this.familiesFromForm(order.formValues || {}).map((f) => [f.garmentType, f.style])
-    );
-    const artifacts = buildIndustrialOrderArtifacts({
-      orderId: order.orderId,
-      orderNumber: String(order.displayNumber || order.orderId),
-      projectName: String(order.projectName || order.formValues?.projectName || ''),
-      revision: Number(revision?.version || order.revision || 1),
-      revisionId: String(revision?.id || `rev_${order.revision || 1}`),
-      generatedAt: Date.now(),
-      distribution,
-      styles,
-    });
-    const files = [];
-    for (const art of artifacts) {
-      const bytes = Buffer.from(art.contentUtf8, 'utf8');
-      const fileId = randomUUID();
-      const storageKey = await this.store.writeBlob(fileId, bytes);
-      const uploadedAt = Date.now();
-      await this.store.saveOrderFile({
-        id: fileId,
-        tenantId: ctx.tenantId,
-        orderId,
-        customerId: ctx.userId,
-        filename: art.filename,
-        storageKey,
-        mimeType: art.mimeType,
-        sizeBytes: bytes.length,
-        status: 'VALIDATED',
-        uploadedAt,
-        conversionStatus: 'NOT_REQUIRED',
-      });
-      files.push({ id: fileId, filename: art.filename, mimeType: art.mimeType, format: art.format, spec: art.spec });
+    this.assertProductionReady(order);
+    const generated = await this.ensureIndustrialOutputs(order, { actorId: ctx.userId, roleId: ctx.roleId });
+    const fresh = (await this.orders.getOrder(orderId, 'admin')) || order;
+    return {
+      orderId,
+      status: fresh.status,
+      files: generated.files,
+      revision: generated.revision,
+    };
+  }
+
+  async downloadOrderFile(ctx: AuthContext, orderId: string, fileId: string) {
+    await this.requireCustomer(ctx);
+    await this.orders.getOrderForCustomer(orderId, ctx.tenantId, ctx.userId);
+    const file = await this.store.getOrderFile(fileId);
+    if (!file || file.tenantId !== ctx.tenantId || file.orderId !== orderId || file.customerId !== ctx.userId) {
+      throw new AccessDeniedError();
     }
-    const formValues: Record<string, unknown> = { ...(order.formValues || {}), productionOutputs: files };
-    await this.orders.patchCustomerDraft(orderId, { actorId: ctx.userId, role: 'customer' }, { formValues });
-    await this.tracer.record({
-      tenantId: ctx.tenantId,
-      entityType: 'order',
-      entityId: orderId,
-      eventType: 'OUTPUT_GENERATED',
-      actorType: 'CUSTOMER',
-      actorId: ctx.userId,
-      metadata: { orderId, count: files.length, revisionId: revision?.id || '' },
-      correlationId: orderId,
-    });
-    return { files, revision };
+    const bytes = await this.store.readBlob(file.id);
+    if (!bytes?.length) throw new AccessDeniedError();
+    return {
+      id: file.id,
+      filename: file.filename,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      contentBase64: bytes.toString('base64'),
+    };
+  }
+
+  private async ensureIndustrialOutputs(
+    order: PersistedOrder,
+    actor: { actorId: string; roleId: string }
+  ): Promise<{
+    files: Array<{ id: string; filename: string; mimeType: string; format: string; spec?: unknown }>;
+    revision: { id?: string; version?: number } | null;
+  }> {
+    this.assertProductionReady(order);
+    const revision = (order.formValues?.productionRevision || null) as { id?: string; version?: number } | null;
+    const existing = order.formValues?.productionOutputs as
+      | Array<{ id: string; filename: string; mimeType: string; format: string; spec?: unknown; revisionId?: string }>
+      | undefined;
+    if (Array.isArray(existing) && existing.length && revision?.id) {
+      const sameRevision = existing.every((row) => !row.revisionId || row.revisionId === revision.id);
+      if (sameRevision) return { files: existing, revision };
+    }
+    try {
+      const selected = selectedGarmentTypesOf(order.formValues);
+      if (!selected.length) throw new RequestInvalidError('OUTPUT_EMPTY');
+      const distribution = order.formValues?.designDistribution as
+        | import('../../contracts/design-distribution').DesignDistribution
+        | undefined;
+      if (!distribution) throw new RequestInvalidError('PRODUCTION_NOT_APPROVED');
+      const styles = Object.fromEntries(
+        this.familiesFromForm(order.formValues || {}).map((f) => [f.garmentType, f.style])
+      );
+      const artifacts = buildIndustrialOrderArtifacts({
+        orderId: order.orderId,
+        orderNumber: String(order.displayNumber || order.orderId),
+        projectName: String(order.projectName || order.formValues?.projectName || ''),
+        revision: Number(revision?.version || order.revision || 1),
+        revisionId: String(revision?.id || `rev_${order.revision || 1}`),
+        generatedAt: Date.now(),
+        distribution,
+        styles,
+      });
+      if (!artifacts.length) throw new RequestInvalidError('OUTPUT_EMPTY');
+      const files = [];
+      for (const art of artifacts) {
+        const bytes = Buffer.from(art.contentUtf8, 'utf8');
+        if (!bytes.length) throw new RequestInvalidError('OUTPUT_EMPTY');
+        const fileId = randomUUID();
+        const storageKey = await this.store.writeBlob(fileId, bytes);
+        const uploadedAt = Date.now();
+        await this.store.saveOrderFile({
+          id: fileId,
+          tenantId: order.tenantId,
+          orderId: order.orderId,
+          customerId: order.customerId,
+          filename: art.filename,
+          storageKey,
+          mimeType: art.mimeType,
+          sizeBytes: bytes.length,
+          status: 'VALIDATED',
+          uploadedAt,
+          conversionStatus: 'NOT_REQUIRED',
+        });
+        files.push({
+          id: fileId,
+          filename: art.filename,
+          mimeType: art.mimeType,
+          format: art.format,
+          spec: art.spec,
+          revisionId: revision?.id,
+        });
+      }
+      const formValues: Record<string, unknown> = { ...(order.formValues || {}), productionOutputs: files };
+      await this.orders.patchCustomerDraft(
+        order.orderId,
+        { actorId: actor.actorId, role: actor.roleId === 'CUSTOMER' ? 'customer' : 'admin' },
+        { formValues }
+      );
+      await this.orders.appendHistoryNote(
+        order.orderId,
+        { actorId: actor.actorId, role: actor.roleId === 'CUSTOMER' ? 'customer' : 'admin' },
+        'outputs_generated'
+      );
+      await this.tracer.record({
+        tenantId: order.tenantId,
+        entityType: 'order',
+        entityId: order.orderId,
+        eventType: 'OUTPUT_GENERATED',
+        actorType: actorTypeFromRole(actor.roleId, actor.actorId),
+        actorId: actor.actorId,
+        metadata: { orderId: order.orderId, count: files.length, revisionId: revision?.id || '' },
+        correlationId: order.orderId,
+      });
+      return { files, revision };
+    } catch (error) {
+      await this.tracer.record({
+        tenantId: order.tenantId,
+        entityType: 'order',
+        entityId: order.orderId,
+        eventType: 'OUTPUT_FAILED',
+        actorType: actorTypeFromRole(actor.roleId, actor.actorId),
+        actorId: actor.actorId,
+        metadata: {
+          orderId: order.orderId,
+          phase: 'production-outputs',
+          error: error instanceof Error ? error.message.replace(/^REQUEST_INVALID:/, '') : 'OUTPUT_FAILED',
+        },
+        correlationId: order.orderId,
+      });
+      throw error;
+    }
   }
 
   private async requireCustomer(ctx: AuthContext): Promise<CustomerProfile> {

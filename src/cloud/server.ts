@@ -5,7 +5,7 @@ async function main(): Promise<void> {
   const env = loadControlPlaneEnv();
   const kernel = await bootControlPlane({ env, listen: true });
   process.stdout.write(
-    `${JSON.stringify({ event: 'control-plane.listening', url: kernel.url, env: env.name, backup: env.backupStrategy })}\n`
+    `${JSON.stringify({ event: 'control-plane.listening', url: kernel.url, env: env.name, dataDir: env.dataDir, ephemeral: env.dataEphemeral, backup: env.backupStrategy })}\n`
   );
 }
 

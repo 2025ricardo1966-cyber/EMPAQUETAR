@@ -20,6 +20,12 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      '^/(health|ready|public|auth|client|admin|workspace|orders|files|onboarding|tenant|platform|audit|webhooks|production|forms|drafts|schemas|ora|customers|notifications|contract)': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
   },
   optimizeDeps: {
     exclude: ['electron']

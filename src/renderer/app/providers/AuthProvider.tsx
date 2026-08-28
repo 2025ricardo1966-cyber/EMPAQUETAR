@@ -16,6 +16,7 @@ type AuthValue = {
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
   restoreSession: () => Promise<void>;
+  setTenantId: (tenantId: string) => void;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -61,8 +62,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(
     async (email: string, password: string) => {
       const res = await api.post('/auth/login', { email, password });
-      console.log('[AUTH DEBUG] login response:', res.status, JSON.stringify(res.data));
       const parsed = tokensFromLogin(res.data);
+      if (!parsed.accessToken || !parsed.user?.roleId) {
+        throw new Error('LOGIN_FAILED');
+      }
       tokens.current.save({
         accessToken: parsed.accessToken,
         refreshToken: parsed.refreshToken,
@@ -86,6 +89,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     tokens.current.clear();
     setUser(null);
   }, [api]);
+
+  const setTenantId = useCallback((tenantId: string) => {
+    const cur = tokens.current.load();
+    tokens.current.save({ ...cur, tenantId });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,8 +130,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout,
       refreshSession,
       restoreSession,
+      setTenantId,
     }),
-    [user, isLoading, api, login, logout, refreshSession, restoreSession]
+    [user, isLoading, api, login, logout, refreshSession, restoreSession, setTenantId]
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

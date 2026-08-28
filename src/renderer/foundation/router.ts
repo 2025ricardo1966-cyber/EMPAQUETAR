@@ -20,7 +20,7 @@ export function normalizePath(raw: string): string {
 export function classifyPath(raw: string): { area: RouteArea; path: string } {
   const path = normalizePath(raw);
   if (path === '/') return { area: 'studio', path };
-  if (path === '/login' || path === '/verify') return { area: 'public', path };
+  if (path === '/login' || path === '/verify' || path === '/register' || path === '/activate') return { area: 'public', path };
   if (path === '/client' || path.startsWith('/client/')) return { area: 'client', path };
   if (path === '/workspace' || path.startsWith('/workspace/')) return { area: 'workspace', path };
   if (path === '/admin' || path.startsWith('/admin/')) return { area: 'admin', path };

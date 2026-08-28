@@ -15,6 +15,14 @@ interface Garment3DViewerProps {
   fabricId?: FabricId;
   height?: number;
   className?: string;
+  designUrl?: string;
+  designLayer?: {
+    zone: string;
+    scale: number;
+    orientation: string;
+    proportion: { width: number; height: number; ratio: number } | null;
+    designType: string;
+  } | null;
 }
 
 export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
@@ -23,6 +31,8 @@ export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
   fabricId = 'dry-fit',
   height = 360,
   className = '',
+  designUrl,
+  designLayer,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<Garment3DSceneController | null>(null);
@@ -48,6 +58,7 @@ export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
       view,
       autoRotate,
       zoom,
+      designLayer: designLayer || undefined,
     });
     controllerRef.current = controller;
 
@@ -68,8 +79,9 @@ export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
       view,
       autoRotate,
       zoom,
+      designLayer: designLayer || undefined,
     });
-  }, [moldId, piezas, fabricId, simulation, lighting, view, autoRotate, zoom]);
+  }, [moldId, piezas, fabricId, simulation, lighting, view, autoRotate, zoom, designLayer, designUrl]);
 
   const handleViewChange = (next: CameraViewPreset) => {
     setView(next);

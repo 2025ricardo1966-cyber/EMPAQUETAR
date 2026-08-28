@@ -19,6 +19,7 @@ import { decryptSecret } from './crypto';
 import { MercadoPagoAdapter } from './MercadoPagoAdapter';
 import { StripeAdapter } from './StripeAdapter';
 import { agreedOrderAmount, nextPaymentRemaining, paymentFullySettled } from '../../../contracts/commercial-terms';
+import { resolveChargeCurrency } from '../../../contracts/payment-currency';
 
 export class OnlinePaymentService {
   stripeAdapter: StripeAdapter;
@@ -33,7 +34,7 @@ export class OnlinePaymentService {
   ) {
     const live = env.paymentLive === true;
     this.mpAdapter = new MercadoPagoAdapter(env.mpAccessToken || '', live);
-    this.stripeAdapter = new StripeAdapter(env.stripeSecretKey || '', live);
+    this.stripeAdapter = new StripeAdapter(env.stripeSecretKey || '', live, env.stripeMode);
   }
 
   async checkout(ctx: AuthContext, orderId: string) {
@@ -49,8 +50,8 @@ export class OnlinePaymentService {
       throw new RequestInvalidError('ALREADY_PAID');
     }
     const cfg = await this.paymentsConfig(ctx.tenantId);
-    const kind = (cfg.gateway === 'STRIPE' ? 'STRIPE' : 'MERCADOPAGO') as 'MERCADOPAGO' | 'STRIPE';
-    const adapter = this.adapter(kind);
+    const kind = this.resolveGateway(cfg);
+    const adapter = this.adapter(kind, cfg);
     const amount = nextPaymentRemaining({
       amountDue: Number(payment.amountDue || 0),
       amountPaid: Number(payment.amountPaid || 0),
@@ -58,7 +59,10 @@ export class OnlinePaymentService {
     });
     if (amount <= 0) throw new RequestInvalidError('ALREADY_PAID');
     const tenantCfg = await this.store.getConfig(ctx.tenantId);
-    const currency = String(tenantCfg?.currency || (kind === 'STRIPE' ? 'USD' : 'ARS'));
+    const currency = resolveChargeCurrency({
+      tenantCurrency: cfg.currency || tenantCfg?.currency,
+      envCurrency: this.env.paymentCurrency,
+    });
     const customer = await this.store.getCustomer(ctx.userId);
     const urls = this.returnUrls(orderId);
     const result = await adapter.createCheckout({
@@ -85,7 +89,14 @@ export class OnlinePaymentService {
       metadata: { orderId, gateway: kind, gatewayOrderId: result.gatewayOrderId },
       correlationId: orderId,
     });
-    return { checkoutUrl: result.checkoutUrl, gateway: kind, gatewayOrderId: result.gatewayOrderId };
+    return {
+      checkoutUrl: result.checkoutUrl,
+      gateway: kind,
+      gatewayOrderId: result.gatewayOrderId,
+      clientSecret: result.clientSecret,
+      currency,
+      amount,
+    };
   }
 
   async status(ctx: AuthContext, orderId: string) {
@@ -118,9 +129,13 @@ export class OnlinePaymentService {
     } catch {
       return { status: 400, body: { error: 'INVALID_EVENT' } };
     }
-    const payment = peek.gatewayOrderId
+    let payment = peek.gatewayOrderId
       ? await this.store.getPaymentRecordByGatewayOrderId(peek.gatewayOrderId)
       : undefined;
+    if (!payment && peek.orderId) {
+      const byOrder = await this.store.getPaymentRecordByOrder(peek.orderId);
+      if (byOrder && (!peek.tenantId || byOrder.tenantId === peek.tenantId)) payment = byOrder;
+    }
     const tenantId = payment?.tenantId;
     const cfg = tenantId ? await this.paymentsConfig(tenantId) : undefined;
     const secret =
@@ -182,8 +197,58 @@ export class OnlinePaymentService {
     return { status: 200, body: { ok: true, status: event.status } };
   }
 
-  private adapter(kind: 'MERCADOPAGO' | 'STRIPE'): PaymentGatewayAdapter {
-    return kind === 'STRIPE' ? this.stripeAdapter : this.mpAdapter;
+  async refund(ctx: AuthContext, orderId: string, amount?: number) {
+    if (!['ADMIN_PRINCIPAL', 'SUBADMIN', 'ADMIN'].includes(ctx.roleId)) throw new AccessDeniedError();
+    const order = await this.orders.getOrder(orderId, 'admin');
+    if (!order || order.tenantId !== ctx.tenantId) throw new AccessDeniedError();
+    const payment = await this.store.getPaymentRecordByOrder(orderId);
+    if (!payment || payment.tenantId !== ctx.tenantId) throw new RequestInvalidError('PAYMENT_NOT_FOUND');
+    const intentId = payment.gatewayPaymentId || payment.gatewayOrderId;
+    if (!intentId || payment.gateway !== 'STRIPE') throw new RequestInvalidError('STRIPE_PAYMENT_REQUIRED');
+    const cfg = await this.paymentsConfig(ctx.tenantId);
+    const tenantCfg = await this.store.getConfig(ctx.tenantId);
+    const currency = resolveChargeCurrency({
+      tenantCurrency: cfg.currency || tenantCfg?.currency,
+      envCurrency: this.env.paymentCurrency,
+    });
+    const stripe = this.adapter('STRIPE', cfg) as StripeAdapter;
+    const refunded = await stripe.refund({
+      paymentIntentId: intentId,
+      amount,
+      currency,
+    });
+    const paid = Number(payment.amountPaid || 0);
+    payment.amountPaid = amount != null ? Math.max(0, paid - amount) : 0;
+    payment.status = payment.amountPaid > 0 ? payment.status : 'FAILED';
+    payment.failureReason = 'Refunded';
+    await this.store.savePaymentRecord(payment);
+    await this.tracer.record({
+      tenantId: ctx.tenantId,
+      entityType: 'order',
+      entityId: orderId,
+      eventType: 'PAYMENT_REFUNDED',
+      actorType: 'ADMIN_PRINCIPAL',
+      actorId: ctx.userId,
+      metadata: { orderId, refundId: refunded.refundId, amount: amount ?? paid },
+      correlationId: orderId,
+    });
+    return { ok: true, refundId: refunded.refundId, status: refunded.status, orderId };
+  }
+
+  private resolveGateway(cfg: TenantPaymentsConfig): 'MERCADOPAGO' | 'STRIPE' {
+    if (cfg.gateway === 'STRIPE') return 'STRIPE';
+    if (cfg.gateway === 'MERCADOPAGO') return 'MERCADOPAGO';
+    if (this.env.stripeSecretKey || cfg.stripe?.secretKey) return 'STRIPE';
+    return 'MERCADOPAGO';
+  }
+
+  private adapter(kind: 'MERCADOPAGO' | 'STRIPE', cfg?: TenantPaymentsConfig): PaymentGatewayAdapter {
+    if (kind !== 'STRIPE') return this.mpAdapter;
+    const secret = cfg?.stripe?.secretKey || this.env.stripeSecretKey || '';
+    if (secret && secret !== (this.env.stripeSecretKey || '')) {
+      return new StripeAdapter(secret, this.env.paymentLive === true, this.env.stripeMode);
+    }
+    return this.stripeAdapter;
   }
 
   private gatewayCtx(tenantId: string): AuthContext {
@@ -227,8 +292,9 @@ export function readPaymentsConfig(config: TenantConfig | undefined, jwtSecret: 
   if (stripe.secretKey) stripe.secretKey = decryptSecret(stripe.secretKey, jwtSecret);
   if (stripe.webhookSecret) stripe.webhookSecret = decryptSecret(stripe.webhookSecret, jwtSecret);
   return {
-    gateway: raw.gateway || 'MERCADOPAGO',
+    gateway: raw.gateway,
     allowManual: raw.allowManual !== false,
+    currency: raw.currency,
     mercadopago: mp,
     stripe,
   };

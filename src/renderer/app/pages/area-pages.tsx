@@ -6,6 +6,7 @@ import { useI18n } from '../providers/I18nProvider';
 import { useTenant } from '../providers/TenantProvider';
 import { useHashPath } from '../router/useHashPath';
 import { ClientOrderFlow } from './ClientOrderFlow';
+import { OrderOpsPanel } from './OrderOpsPanel';
 
 function fileToBase64(file: File): Promise<{ name: string; mime: string; content: string }> {
   return new Promise((resolve, reject) => {
@@ -258,6 +259,7 @@ export const ClientAreaPage: React.FC = () => {
                 </li>
               ))}
             </ul>
+            <OrderOpsPanel orderId={orderIdFromPath} files={(detail as { files?: Array<{ id?: string; filename?: string; mimeType?: string; status?: string; sizeBytes?: number }> }).files} outputs={(detail as { outputs?: Array<{ id?: string; filename?: string; format?: string }> }).outputs} fileBase="client" />
           </>
         ) : (
           <p>{t('app.loading')}</p>
@@ -1069,6 +1071,11 @@ export const AdminAreaPage: React.FC = () => {
                       </div>
                     ) : null}
                     <p data-pilot-fixture="preview">{t('pilot.preview_fixture')}</p>
+                    <OrderOpsPanel
+                      orderId={o.orderId}
+                      customerName={o.customerId}
+                      fileBase="workspace"
+                    />
                   </div>
                 ) : null}
                 {nextOperationalStatuses(op).map((to) => (

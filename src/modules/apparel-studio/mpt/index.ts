@@ -53,4 +53,3 @@ export {
   IDENTIFICATION_FIELD_LABELS,
 } from './engine/piece-identification-engine';
 export { buildIdentificationSvgGroup } from './engine/identification-svg';
-export { MptPieceOverridesStore } from './mpt-piece-overrides-store';

@@ -53,7 +53,6 @@ export class ApiClient {
       headers.authorization = `Bearer ${tokens.accessToken}`;
     }
     if (tokens.tenantId) headers['x-tenant-id'] = tokens.tenantId;
-    console.log('[API DEBUG]', { path, method, hasToken: !!tokens.accessToken, hasAuthorization: !!headers.authorization });
     const res = await this.options.fetchFn(url, {
       method,
       headers,
