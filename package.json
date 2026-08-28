@@ -9,7 +9,7 @@
     "build:cloud": "tsc -p tsconfig.cloud.json",
     "cloud": "node dist/cloud/server.js",
     "typecheck:cloud": "tsc -p tsconfig.cloud.json --noEmit",
-    "test": "node --test dist/contracts/order-production-output.test.js dist/cloud/production-cycle.test.js"
+    "test": "node --test --test-timeout=180000 dist/contracts/order-production-output.test.js dist/cloud/production-cycle.test.js"
   },
   "engines": {
     "node": ">=20"
