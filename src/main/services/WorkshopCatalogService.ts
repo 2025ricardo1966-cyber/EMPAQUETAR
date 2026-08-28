@@ -10,6 +10,12 @@ import {
   type WorkshopCatalogItem,
   type WorkshopCategory,
 } from '../../contracts/workshop-catalog-domain';
+import {
+  presentProduct,
+  PRODUCT_NAME_NORMALIZATIONS,
+  productLibrarySeeds,
+  resolveProduct,
+} from '../../contracts/product-library';
 import type { ControlPlaneStore } from '../../cloud/store/ControlPlaneStore';
 import {
   isGarmentType,
@@ -53,8 +59,9 @@ export class WorkshopCatalogService {
     await this.ensureLibrary(ctx.tenantId);
     const flags = await this.flags(ctx.tenantId);
     const items = (await this.store.listWorkshopItems(ctx.tenantId)).filter((i) => i.tenantId === ctx.tenantId);
-    if (!forClient) return items;
-    return items.filter((i) => flags[i.category] && i.stockEnabled);
+    const presented = items.map((item) => this.presentItem(item));
+    if (!forClient) return presented;
+    return presented.filter((i) => flags[i.category] && i.stockEnabled);
   }
 
   async ensureLibrary(tenantId: string): Promise<void> {
@@ -62,9 +69,33 @@ export class WorkshopCatalogService {
     const known = new Set(existing.map((i) => i.itemId));
     const named = new Set(existing.map((i) => `${i.category}:${i.name.toLowerCase()}`));
     const now = Date.now();
-    for (const row of DEFAULT_WORKSHOP_LIBRARY) {
+    for (const rule of PRODUCT_NAME_NORMALIZATIONS) {
+      const item = existing.find((i) => (rule.itemId && i.itemId === rule.itemId) || i.name === rule.from);
+      if (!item) continue;
+      if (item.name === rule.to) continue;
+      item.name = rule.to;
+      item.updatedAt = now;
+      await this.store.saveWorkshopItem(item);
+      named.delete(`${item.category}:${rule.from.toLowerCase()}`);
+      named.add(`${item.category}:${rule.to.toLowerCase()}`);
+    }
+    const seeds = [...DEFAULT_WORKSHOP_LIBRARY, ...productLibrarySeeds()];
+    const seenKeys = new Set<string>();
+    for (const row of seeds) {
+      if (seenKeys.has(row.key)) continue;
+      seenKeys.add(row.key);
       const itemId = libraryItemId(row.key);
-      if (known.has(itemId) || named.has(`${row.category}:${row.name.toLowerCase()}`)) continue;
+      const already = existing.find((i) => i.itemId === itemId);
+      if (already) {
+        if (already.name !== row.name) {
+          already.name = row.name;
+          already.description = row.description;
+          already.updatedAt = now;
+          await this.store.saveWorkshopItem(already);
+        }
+        continue;
+      }
+      if (named.has(`${row.category}:${row.name.toLowerCase()}`)) continue;
       await this.store.saveWorkshopItem({
         itemId,
         tenantId,
@@ -77,7 +108,22 @@ export class WorkshopCatalogService {
         createdAt: now,
         updatedAt: now,
       });
+      known.add(itemId);
+      named.add(`${row.category}:${row.name.toLowerCase()}`);
     }
+  }
+
+  private presentItem(item: WorkshopCatalogItem): WorkshopCatalogItem {
+    const product = resolveProduct({ itemId: item.itemId, name: item.name });
+    if (!product) return { ...item, previewMode: '2D' };
+    const presented = presentProduct(product);
+    return {
+      ...item,
+      productKey: presented.productKey,
+      previewMode: presented.previewMode,
+      family: presented.family,
+      moldId: presented.moldId || undefined,
+    };
   }
 
   async createItem(ctx: AuthContext, body: Record<string, unknown>): Promise<WorkshopCatalogItem> {
@@ -132,6 +178,7 @@ export class WorkshopCatalogService {
   }
 
   async requireEnabledLine(tenantId: string, itemId: string, quantity: number) {
+    await this.ensureLibrary(tenantId);
     const item = await this.store.getWorkshopItem(itemId);
     if (!item || item.tenantId !== tenantId) throw new AccessDeniedError();
     const flags = await this.flags(tenantId);

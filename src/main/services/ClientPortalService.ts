@@ -84,6 +84,14 @@ import {
 } from '../../contracts/order-production-output';
 import { buildIndustrialOrderArtifacts } from './orderIndustrialExport';
 import { interpretIngestedDesign } from './ojo/VisualInterpreter';
+import {
+  approvalMatchesVisual,
+  presentProduct,
+  previewModeOf,
+  productNeedsApparelConfig,
+  resolveProduct,
+  visualVersionFromForm,
+} from '../../contracts/product-library';
 import { scaleGraphic } from './ora/file-graphics';
 import {
   parseOjoHints,
@@ -791,6 +799,7 @@ export class ClientPortalService {
       if (existing) {
         formValues.designDistribution = { ...existing, designFileId: fileId, designKey: fileId };
       }
+      this.syncVisualApproval(formValues);
       try {
         const diagnosis = interpretIngestedDesign({
           fileId,
@@ -808,6 +817,7 @@ export class ClientPortalService {
           sample2dFileId: fileId,
           sample3dAvailable: false,
         } satisfies OjoSession;
+        this.syncVisualApproval(formValues);
       } catch {
         /* OJO is advisory: never block ingest */
       }
@@ -1143,6 +1153,19 @@ export class ClientPortalService {
     delete clientForm.designDistribution;
     delete clientForm.designFileId;
     delete clientForm.quantity;
+    const product = resolveProduct({ itemId: item.itemId, name: item.name });
+    const previewMode = previewModeOf(product);
+    const productFields: Record<string, unknown> = {
+      productKey: product?.id,
+      previewMode,
+      moldId: product?.moldId,
+      productFamily: product?.family,
+      productSnapshot: product ? presentProduct(product) : undefined,
+    };
+    if (product?.garmentType) {
+      productFields.selectedGarmentTypes = [product.garmentType];
+      productFields.garmentType = product.garmentType;
+    }
     const order = await this.orders.createOrder({
       tenantId: ctx.tenantId,
       customerId: profile.customerId,
@@ -1155,6 +1178,7 @@ export class ClientPortalService {
       fulfillment,
       formValues: {
         ...clientForm,
+        ...productFields,
         workshopItemId: item.itemId,
         workshopLines: [snapshot],
         quantity,
@@ -1275,6 +1299,8 @@ export class ClientPortalService {
           !paymentFullySettled(agreedOrderAmount(fresh), Number(payment.amountPaid || 0)),
       },
       commercialTerms: this.presentCommercialTerms(fresh, payment),
+      viewer: this.viewerFromOrder(fresh),
+      configuration: this.presentConfiguration(fresh),
     };
   }
 
@@ -1325,6 +1351,9 @@ export class ClientPortalService {
       priceValidUntilLabel: formatCommercialDate(order.economicSnapshot?.validUntil || order.dueAt),
       previewApproved: !!order.formValues?.previewApproved,
       rawMaterialRequested: !!order.formValues?.rawMaterialRequested,
+      previewMode: (order.formValues?.previewMode === '3D' ? '3D' : '2D') as '2D' | '3D',
+      productKey: order.formValues?.productKey ? String(order.formValues.productKey) : undefined,
+      previewApprovalValid: approvalMatchesVisual(order.formValues || {}).valid,
       ...fulfillmentView(order, langCode),
     };
   }
@@ -1373,7 +1402,7 @@ export class ClientPortalService {
         garmentType,
         sizeTableId: table.id,
         sizeTableSnapshot: formValues.sizeTableSnapshot as never,
-        moldeId: moldeIdForFamily(garmentType),
+        moldeId: String(formValues.moldId || '') || moldeIdForFamily(garmentType),
         style: defaultFamilyStyle(garmentType),
       });
     }
@@ -1392,7 +1421,7 @@ export class ClientPortalService {
           garmentType,
           sizeTableId: table.id,
           sizeTableSnapshot: snapshotSizeTable(table),
-          moldeId: previous?.moldeId || moldeIdForFamily(garmentType),
+          moldeId: previous?.moldeId || String(formValues.moldId || '') || moldeIdForFamily(garmentType),
           style: previous?.style || defaultFamilyStyle(garmentType),
         });
       }
@@ -1419,7 +1448,7 @@ export class ClientPortalService {
         const family = current.find((f) => f.garmentType === garmentType);
         if (!family) throw new RequestInvalidError('GARMENT_NOT_SELECTED');
         family.style = assertFamilyStyle(garmentType, r);
-        family.moldeId = moldeIdForFamily(garmentType);
+        family.moldeId = String(formValues.moldId || family.moldeId || '') || moldeIdForFamily(garmentType);
       }
       formValues.garmentFamilies = current;
     }
@@ -1454,8 +1483,7 @@ export class ClientPortalService {
         body.tpu != null ||
         body.laser != null)
     ) {
-      formValues.previewApproved = false;
-      delete formValues.preview3dDecision;
+      this.syncVisualApproval(formValues);
     }
     await this.orders.patchCustomerDraft(orderId, { actorId: ctx.userId, role: 'customer' }, { formValues });
     await this.tracer.record({
@@ -1496,17 +1524,22 @@ export class ClientPortalService {
       raw === 'RAW' || raw === 'RAW_MATERIAL' ? 'RAW' : raw === 'REJECTED' || raw === 'REJECT' ? 'REJECTED' : raw === 'APPROVED' || raw === 'APPROVE' ? 'APPROVED' : ('' as Preview3DDecision['status']);
     if (!status) throw new RequestInvalidError('INVALID_PREVIEW_DECISION');
     const now = Date.now();
+    const visualVersion = visualVersionFromForm({ ...(order.formValues || {}), previewMode: (order.formValues || {}).previewMode });
+    const previewMode = (order.formValues || {}).previewMode === '3D' ? '3D' : '2D';
     const decision: Preview3DDecision = {
       status,
       at: now,
       actorId: ctx.userId,
       note: body.note ? String(body.note) : undefined,
+      visualVersion,
+      previewMode,
     };
     const formValues: Record<string, unknown> = {
       ...(order.formValues || {}),
       preview3dDecision: decision,
       previewApproved: status === 'APPROVED',
       rawMaterialRequested: status === 'RAW',
+      visualVersion,
     };
     await this.orders.patchCustomerDraft(orderId, { actorId: ctx.userId, role: 'customer' }, { formValues });
     await this.orders.recordApproval(
@@ -1869,6 +1902,24 @@ export class ClientPortalService {
       productionRevision: fv.productionRevision || null,
       productionOutputs: fv.productionOutputs || null,
       styleOptions: familyStyleOptions(),
+      product: fv.productSnapshot || (() => {
+        const product = resolveProduct({
+          productKey: fv.productKey != null ? String(fv.productKey) : undefined,
+          itemId: fv.workshopItemId != null ? String(fv.workshopItemId) : undefined,
+          name: fv.materialName != null ? String(fv.materialName) : undefined,
+        });
+        return product ? presentProduct(product) : null;
+      })(),
+      previewMode: fv.previewMode === '3D' ? '3D' : '2D',
+      visualVersion: visualVersionFromForm(fv),
+      previewApprovalValid: approvalMatchesVisual(fv).valid,
+      needsApparelConfig: productNeedsApparelConfig(
+        resolveProduct({
+          productKey: fv.productKey != null ? String(fv.productKey) : undefined,
+          itemId: fv.workshopItemId != null ? String(fv.workshopItemId) : undefined,
+          name: fv.materialName != null ? String(fv.materialName) : undefined,
+        })
+      ),
     };
   }
 
@@ -1883,21 +1934,42 @@ export class ClientPortalService {
     const family =
       families.find((f) => f.garmentType === (first?.garmentType || gc?.garmentType || fv.garmentType)) || families[0];
     const style = family?.style;
-    const ojo = fv.ojoInterpretation as { layer?: unknown } | undefined;
+    const session = fv.ojoSession as OjoSession | undefined;
+    const product = resolveProduct({
+      productKey: fv.productKey != null ? String(fv.productKey) : undefined,
+      itemId: fv.workshopItemId != null ? String(fv.workshopItemId) : undefined,
+      name: fv.materialName != null ? String(fv.materialName) : undefined,
+    });
+    const applied = String(session?.sample2dFileId || fv.designFileId || '').trim() || undefined;
+    const ojo = (fv.ojoInterpretation || session?.current) as { layer?: unknown } | undefined;
     return {
       ...orderToViewerParams({
-        garmentType: String(first?.garmentType || family?.garmentType || gc?.garmentType || fv.garmentType || ''),
+        garmentType: String(first?.garmentType || family?.garmentType || gc?.garmentType || fv.garmentType || product?.garmentType || ''),
         sizeLabel: String(first?.sizeLabel || rosterFirst?.sizeLabel || rosterFirst?.size || fv.sizeLabel || ''),
         materialName: String(fv.materialName || ''),
-        designUrl: fv.designFileId ? String(fv.designFileId) : undefined,
+        designUrl: applied,
         tpu,
-        collarId: style?.collarId,
-        sleeveId: style?.sleeveId,
+        collarId: style?.collarId || product?.defaultCollarId,
+        sleeveId: style?.sleeveId || product?.defaultSleeveId,
         fabricId: style?.fabricId,
         colors: style?.colors,
+        moldId: String(family?.moldeId || fv.moldId || product?.moldId || ''),
+        previewMode: previewModeOf(product),
+        productKey: product?.id,
+        appliedDesignFileId: applied,
       }),
       designLayer: ojo?.layer || null,
     };
+  }
+
+  private syncVisualApproval(formValues: Record<string, unknown>): void {
+    const current = visualVersionFromForm(formValues);
+    formValues.visualVersion = current;
+    if (!formValues.previewApproved) return;
+    const match = approvalMatchesVisual(formValues);
+    if (!match.valid) {
+      formValues.previewApproved = false;
+    }
   }
 
   private familiesFromForm(formValues: Record<string, unknown>): GarmentFamilyConfig[] {
@@ -2036,8 +2108,10 @@ export class ClientPortalService {
       }
     }
     const formValues: Record<string, unknown> = { ...fv };
-    const viewer = this.viewerFromOrder({ ...order, formValues: { ...formValues, ojoInterpretation: session.current } });
-    session.sample3dAvailable = !!viewer.ready;
+    formValues.ojoInterpretation = session.current;
+    formValues.ojoSession = session;
+    const viewer = this.viewerFromOrder({ ...order, formValues });
+    session.sample3dAvailable = viewer.previewMode === '3D' && !!viewer.ready && !!viewer.moldId;
     if (session.sample3dAvailable) {
       const sample3d = await this.saveOjoDerivedFile(ctx, order, {
         filename: 'muestra-3d.json',
@@ -2064,6 +2138,7 @@ export class ClientPortalService {
     }
     formValues.ojoInterpretation = session.current;
     formValues.ojoSession = session;
+    this.syncVisualApproval(formValues);
     await this.orders.patchCustomerDraft(orderId, { actorId: ctx.userId, role: 'customer' }, { formValues });
     const updated = (await this.orders.getOrder(orderId, 'admin')) || order;
     return {
@@ -2071,6 +2146,7 @@ export class ClientPortalService {
       ojo: session.current,
       ojoSession: session,
       viewer: this.viewerFromOrder(updated),
+      configuration: this.presentConfiguration(updated),
       sample2d: session.sample2dFileId
         ? { fileId: session.sample2dFileId, available: true }
         : { fileId: originalFileId, available: this.isDesignUpload(original.filename, original.mimeType) },

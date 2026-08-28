@@ -3,6 +3,7 @@ import type { FabricId, MedidasPiezaResueltas, MoldeId } from '../../../modules/
 import {
   DEFAULT_GARMENT_3D_CONFIG,
   Garment3DSceneController,
+  VALIDATION_SIMULATION,
   type CameraViewPreset,
   type Garment3DSimulationOptions,
   type LightingPresetId,
@@ -23,6 +24,8 @@ interface Garment3DViewerProps {
     proportion: { width: number; height: number; ratio: number } | null;
     designType: string;
   } | null;
+  /** Product validation: real design, no cloth sim / cinematic FX. */
+  validationMode?: boolean;
 }
 
 export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
@@ -33,17 +36,20 @@ export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
   className = '',
   designUrl,
   designLayer,
+  validationMode = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<Garment3DSceneController | null>(null);
 
   const [view, setView] = useState<CameraViewPreset>(DEFAULT_GARMENT_3D_CONFIG.view);
   const [zoom, setZoom] = useState(DEFAULT_GARMENT_3D_CONFIG.zoom);
-  const [lighting, setLighting] = useState<LightingPresetId>(DEFAULT_GARMENT_3D_CONFIG.lighting);
-  const [simulation, setSimulation] = useState<Garment3DSimulationOptions>(
-    DEFAULT_GARMENT_3D_CONFIG.simulation
+  const [lighting, setLighting] = useState<LightingPresetId>(
+    validationMode ? 'studio' : DEFAULT_GARMENT_3D_CONFIG.lighting
   );
-  const [autoRotate, setAutoRotate] = useState(DEFAULT_GARMENT_3D_CONFIG.autoRotate);
+  const [simulation, setSimulation] = useState<Garment3DSimulationOptions>(
+    validationMode ? VALIDATION_SIMULATION : DEFAULT_GARMENT_3D_CONFIG.simulation
+  );
+  const [autoRotate, setAutoRotate] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -53,12 +59,13 @@ export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
       moldId,
       piezas,
       fabricId,
-      simulation,
+      simulation: validationMode ? VALIDATION_SIMULATION : simulation,
       lighting,
       view,
-      autoRotate,
+      autoRotate: false,
       zoom,
       designLayer: designLayer || undefined,
+      designUrl,
     });
     controllerRef.current = controller;
 
@@ -74,14 +81,15 @@ export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
       moldId,
       piezas,
       fabricId,
-      simulation,
+      simulation: validationMode ? VALIDATION_SIMULATION : simulation,
       lighting,
       view,
-      autoRotate,
+      autoRotate: validationMode ? false : autoRotate,
       zoom,
       designLayer: designLayer || undefined,
+      designUrl,
     });
-  }, [moldId, piezas, fabricId, simulation, lighting, view, autoRotate, zoom, designLayer, designUrl]);
+  }, [moldId, piezas, fabricId, simulation, lighting, view, autoRotate, zoom, designLayer, designUrl, validationMode]);
 
   const handleViewChange = (next: CameraViewPreset) => {
     setView(next);
@@ -105,8 +113,9 @@ export const Garment3DViewer: React.FC<Garment3DViewerProps> = ({
         view={view}
         zoom={zoom}
         lighting={lighting}
-        simulation={simulation}
-        autoRotate={autoRotate}
+        simulation={validationMode ? VALIDATION_SIMULATION : simulation}
+        autoRotate={validationMode ? false : autoRotate}
+        validationMode={validationMode}
         onViewChange={handleViewChange}
         onZoomChange={handleZoomChange}
         onLightingChange={setLighting}

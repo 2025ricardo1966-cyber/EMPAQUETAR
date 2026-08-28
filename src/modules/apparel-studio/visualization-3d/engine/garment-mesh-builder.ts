@@ -135,6 +135,8 @@ export function buildGarment3DMesh(
   backMat.color.offsetHSL(0, 0, -0.04);
 
   const front = createTorsoPanel(chestW, bodyH, Math.PI * 0.48, 1, frontMat);
+  front.mesh.name = 'print-front';
+  front.mesh.userData.printSurface = 'front';
   front.mesh.position.y = bodyH * 0.08;
   group.add(front.mesh);
   simulatableParts.push(front);
@@ -177,6 +179,8 @@ export function buildGarment3DMesh(
     const lowerMat = fabricMaterial(fabricId);
     lowerMat.color.offsetHSL(0, 0, -0.06);
     const lower = createLowerGarment(measurements.waistWidth, measurements.legLength, lowerMat);
+    lower.mesh.name = 'print-lower';
+    lower.mesh.userData.printSurface = 'lower';
     lower.mesh.position.y = -bodyH * 0.42;
     group.add(lower.mesh);
     simulatableParts.push(lower);

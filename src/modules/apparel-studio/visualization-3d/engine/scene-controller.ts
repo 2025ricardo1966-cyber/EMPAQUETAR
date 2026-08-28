@@ -27,6 +27,8 @@ export class Garment3DSceneController {
     fill: THREE.DirectionalLight;
     rim: THREE.DirectionalLight;
   };
+  private designTexture: THREE.Texture | null = null;
+  private designUrl = '';
   private resizeObserver: ResizeObserver | null = null;
 
   constructor(canvas: HTMLCanvasElement, initial: Garment3DSceneConfig) {
@@ -73,6 +75,7 @@ export class Garment3DSceneController {
     this.scene.add(floor);
 
     this.rebuildGarment(initial.moldId, initial.piezas, initial.fabricId);
+    this.applyDesignTexture(initial.designUrl, initial.designLayer);
     this.setLighting(initial.lighting);
     this.setView(initial.view, false);
     this.setZoom(initial.zoom);
@@ -107,6 +110,7 @@ export class Garment3DSceneController {
     this.bodyHeight = built.bodyHeight;
     this.fabricId = fabricId;
     this.scene.add(built.group);
+    this.applyDesignTexture(this.config.designUrl, this.config.designLayer);
   }
 
   private disposeGroup(group: THREE.Group): void {
@@ -145,7 +149,6 @@ export class Garment3DSceneController {
   updateConfig(next: Partial<Garment3DSceneConfig>): void {
     const prev = this.config;
     this.config = { ...this.config, ...next };
-    // designLayer is retained for a later texture/layer pass; V1 does not bind a map.
 
     if (next.moldId || next.piezas || next.fabricId) {
       const moldId = next.moldId ?? prev.moldId;
@@ -158,6 +161,10 @@ export class Garment3DSceneController {
       ) {
         this.rebuildGarment(moldId, piezas, fabricId);
       }
+    }
+
+    if (next.designUrl !== undefined || next.designLayer !== undefined) {
+      this.applyDesignTexture(this.config.designUrl, this.config.designLayer);
     }
 
     if (next.lighting) this.setLighting(next.lighting);
@@ -208,10 +215,94 @@ export class Garment3DSceneController {
     applyLightingPreset(this.scene, presetId, this.lights);
   }
 
+  private applyDesignTexture(
+    designUrl?: string,
+    layer?: Garment3DSceneConfig['designLayer']
+  ): void {
+    const url = String(designUrl || '').trim();
+    if (!url) {
+      this.clearDesignTexture();
+      return;
+    }
+    if (url === this.designUrl && this.designTexture) {
+      this.bindDesignTexture(this.designTexture, layer);
+      return;
+    }
+    this.designUrl = url;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    loader.load(
+      url,
+      (texture) => {
+        if (this.designUrl !== url) {
+          texture.dispose();
+          return;
+        }
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.anisotropy = 4;
+        const scale = Number(layer?.scale);
+        if (Number.isFinite(scale) && scale > 0 && scale <= 1) {
+          texture.repeat.set(1, 1);
+        }
+        this.designTexture?.dispose();
+        this.designTexture = texture;
+        this.bindDesignTexture(texture, layer);
+      },
+      undefined,
+      () => {
+        /* invalid artwork URL: keep fabric color, never substitute a stock image */
+      }
+    );
+  }
+
+  private bindDesignTexture(texture: THREE.Texture, layer?: Garment3DSceneConfig['designLayer']): void {
+    if (!this.garmentGroup) return;
+    const zone = String(layer?.zone || 'front');
+    this.garmentGroup.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (!(mat instanceof THREE.MeshStandardMaterial)) return;
+      const surface = String(obj.userData.printSurface || obj.name || '');
+      const isFront = surface === 'front' || obj.name === 'print-front';
+      const isLower = surface === 'lower' || obj.name === 'print-lower';
+      if (!isFront && !isLower) return;
+      const apply =
+        zone === 'full' ||
+        zone === 'unknown' ||
+        (zone === 'front' && (isFront || isLower)) ||
+        (zone === 'back' && isFront);
+      if (!apply) return;
+      mat.map = texture;
+      mat.needsUpdate = true;
+    });
+  }
+
+  private clearDesignTexture(): void {
+    this.designUrl = '';
+    if (!this.garmentGroup) {
+      this.designTexture?.dispose();
+      this.designTexture = null;
+      return;
+    }
+    this.garmentGroup.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mat = obj.material;
+      if (mat instanceof THREE.MeshStandardMaterial && mat.map && mat.map === this.designTexture) {
+        mat.map = null;
+        mat.needsUpdate = true;
+      }
+    });
+    this.designTexture?.dispose();
+    this.designTexture = null;
+  }
+
   dispose(): void {
     cancelAnimationFrame(this.animationId);
     this.resizeObserver?.disconnect();
     this.controls.dispose();
+    this.clearDesignTexture();
     if (this.garmentGroup) this.disposeGroup(this.garmentGroup);
     this.renderer.dispose();
   }
