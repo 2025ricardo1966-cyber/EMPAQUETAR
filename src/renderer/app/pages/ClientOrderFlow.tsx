@@ -1066,7 +1066,7 @@ export const ClientOrderFlow: React.FC<{
 
           {configStep === 'preview' || configStep === 'pay' ? (
             <>
-              <h3>{t('flow.preview')}</h3>
+              {flowOn('preview') ? <h3>{t('flow.preview')}</h3> : null}
               <div data-role="flow-preview-actions">
                 {flowActions
                   .filter((a) => a.visible && a.key !== 'preview' && a.key !== 'continue_production')
@@ -1082,6 +1082,7 @@ export const ClientOrderFlow: React.FC<{
                     )
                   )}
               </div>
+              {flowOn('preview') ? (
               <ClientOrderPreviewAdaptive
                 designUrl={designUrl || undefined}
                 viewer={
@@ -1092,6 +1093,7 @@ export const ClientOrderFlow: React.FC<{
                       : { previewMode: '2D' }
                 }
               />
+              ) : null}
               {flowOn('client_approval') ? (
               <>
               <h3>{t('flow.approve_q')}</h3>

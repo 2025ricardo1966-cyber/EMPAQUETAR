@@ -16,10 +16,11 @@ import { t } from '../../i18n';
 import {
   parseFlowConfiguration,
   readFlowConfiguration,
+  resolveTenantCapabilities,
   writeFlowConfiguration,
   FLOW_ACTION_DEFINITIONS,
-  FLOW_FEATURE_DEFINITIONS,
 } from '../../contracts/flow-configuration';
+import { discoverWorkshopCapabilities, EMPAQUETAR_CAPABILITY_CATEGORIES, EMPAQUETAR_COMMERCIAL_TIERS } from '../../contracts/empaquetar-capabilities';
 import {
   normalizeCurrencyCode,
   normalizeLanguageTag,
@@ -424,8 +425,11 @@ export class AdminConfigService {
       actorId: ctx.userId,
       metadata: {
         eventType: 'FLOW_CONFIGURATION_UPDATED',
+        tenantId: ctx.tenantId,
         actionOrder: incoming.actionOrder.join(','),
+        enabled: incoming.features.filter((f) => f.enabled).map((f) => f.featureKey).join(','),
         disabled: incoming.features.filter((f) => !f.enabled).map((f) => f.featureKey).join(','),
+        displayOrder: incoming.features.map((f) => f.featureKey).join(','),
       },
       correlationId: ctx.tenantId,
     });
@@ -433,15 +437,21 @@ export class AdminConfigService {
   }
 
   private flowDto(flow: ReturnType<typeof readFlowConfiguration>) {
+    const capabilities = resolveTenantCapabilities(flow);
     return {
       version: flow.version,
       tenantId: flow.tenantId,
       features: flow.features,
       actionOrder: flow.actionOrder,
+      capabilities,
       updatedAt: flow.updatedAt,
       updatedBy: flow.updatedBy || null,
       catalog: {
-        features: FLOW_FEATURE_DEFINITIONS,
+        source: 'empaquetar-capabilities',
+        categories: [...EMPAQUETAR_CAPABILITY_CATEGORIES],
+        commercialTiers: [...EMPAQUETAR_COMMERCIAL_TIERS],
+        commercialEnforced: false,
+        capabilities: discoverWorkshopCapabilities(),
         actions: FLOW_ACTION_DEFINITIONS,
       },
     };

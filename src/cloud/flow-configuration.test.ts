@@ -4,6 +4,7 @@ import { AccessDeniedError, ALL_PERMISSIONS, CUSTOMER_DEFAULT_PERMISSIONS, type 
 import { RequestInvalidError } from '../contracts/configuration-schema';
 import { assertCanGenerateOutputs } from '../contracts/order-production-output';
 import { FLOW_FEATURE_KEYS } from '../contracts/flow-configuration';
+import { discoverWorkshopCapabilities } from '../contracts/empaquetar-capabilities';
 import { ClientPortalService } from '../main/services/ClientPortalService';
 import { AdminConfigService } from '../main/services/AdminConfigService';
 import { WorkshopCatalogService } from '../main/services/WorkshopCatalogService';
@@ -75,6 +76,41 @@ before(async () => {
 
 after(async () => {
   if (kernel) await stopControlPlane(kernel);
+});
+
+test('available capabilities come from the EMPAQUETAR catalog', async () => {
+  const view = await flowCfg.getFlowConfiguration(adminA);
+  const discovered = discoverWorkshopCapabilities().map((row) => row.key).slice().sort();
+  const returned = ((view as { capabilities?: Array<{ key: string; supported?: boolean }> }).capabilities || [])
+    .map((row) => row.key)
+    .slice()
+    .sort();
+  assert.deepEqual(returned, discovered);
+  assert.equal(
+    ((view as { capabilities?: Array<{ supported?: boolean }> }).capabilities || []).every((row) => row.supported),
+    true
+  );
+  assert.equal((returned as string[]).includes('IMAGE_16K'), false);
+  assert.equal((returned as string[]).includes('CANDY_BAR'), false);
+  assert.equal((view as { catalog?: { source?: string; commercialEnforced?: boolean } }).catalog?.source, 'empaquetar-capabilities');
+  assert.equal((view as { catalog?: { commercialEnforced?: boolean } }).catalog?.commercialEnforced, false);
+});
+
+test('nucleus capabilities cannot be turned off by the workshop admin', async () => {
+  await flowCfg.putFlowConfiguration(adminA, {
+    features: [
+      { featureKey: 'orders', enabled: false },
+      { featureKey: 'traceability', enabled: false },
+    ],
+  });
+  const adminView = await flowCfg.getFlowConfiguration(adminA);
+  const caps = (adminView as { capabilities?: Array<{ key: string; enabled: boolean; configurable: boolean }> }).capabilities || [];
+  assert.equal(caps.find((row) => row.key === 'orders')?.enabled, true);
+  assert.equal(caps.find((row) => row.key === 'orders')?.configurable, false);
+  assert.equal(caps.find((row) => row.key === 'traceability')?.enabled, true);
+  const clientView = await portal.getFlowConfiguration(customerA);
+  assert.equal(clientView.features.orders, true);
+  assert.equal(clientView.features.traceability, true);
 });
 
 test('admin can disable a capability and the client of that tenant no longer sees it', async () => {
